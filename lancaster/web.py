@@ -53,10 +53,12 @@ class WebServer:
         self._http_server = HTTPFileServer(host=self._host, port=self._port + 1)
         self._controller = MediaController(http_server=self._http_server)
         self._url_proxy = URLProxy(
-            http_server=self._http_server, controller=self._controller,
+            http_server=self._http_server,
+            controller=self._controller,
         )
         self._mirror = DesktopMirror(
-            http_server=self._http_server, controller=self._controller,
+            http_server=self._http_server,
+            controller=self._controller,
         )
         self._media_server: MediaServer | None = None
         self._selected_device: str | None = None
@@ -139,9 +141,14 @@ class WebServer:
     def _build_status_dict(self, info=None, device=None):
         if not device:
             return {
-                "device": None, "state": "NO_DEVICE", "position": "00:00:00",
-                "duration": "00:00:00", "position_seconds": 0,
-                "duration_seconds": 0, "volume": 0, "title": "",
+                "device": None,
+                "state": "NO_DEVICE",
+                "position": "00:00:00",
+                "duration": "00:00:00",
+                "position_seconds": 0,
+                "duration_seconds": 0,
+                "volume": 0,
+                "title": "",
                 "queue_index": self._queue_index,
                 "queue_length": len(self._queue),
             }
@@ -159,15 +166,21 @@ class WebServer:
                 "queue_length": len(self._queue),
             }
         return {
-            "device": device.name, "state": "UNKNOWN", "position": "00:00:00",
-            "duration": "00:00:00", "position_seconds": 0,
-            "duration_seconds": 0, "volume": 0, "title": "",
+            "device": device.name,
+            "state": "UNKNOWN",
+            "position": "00:00:00",
+            "duration": "00:00:00",
+            "position_seconds": 0,
+            "duration_seconds": 0,
+            "volume": 0,
+            "title": "",
             "queue_index": self._queue_index,
             "queue_length": len(self._queue),
         }
 
     async def _broadcast_ws(self, msg: dict) -> None:
         import json as _json
+
         data = _json.dumps(msg)
         dead = set()
         for ws in self._ws_clients:
@@ -240,22 +253,24 @@ class WebServer:
         devices = await self._discovery.scan(timeout=timeout)
         result = []
         for d in devices:
-            result.append({
-                "name": d.name,
-                "ip": d.ip,
-                "type": d.device_type.value,
-                "manufacturer": d.manufacturer,
-                "model": d.model,
-                "udn": d.udn,
-                "selected": (
-                    d.name == self._selected_device
-                    or (
-                        not self._selected_device
-                        and self._discovery.renderers
-                        and d == self._discovery.renderers[0]
-                    )
-                ),
-            })
+            result.append(
+                {
+                    "name": d.name,
+                    "ip": d.ip,
+                    "type": d.device_type.value,
+                    "manufacturer": d.manufacturer,
+                    "model": d.model,
+                    "udn": d.udn,
+                    "selected": (
+                        d.name == self._selected_device
+                        or (
+                            not self._selected_device
+                            and self._discovery.renderers
+                            and d == self._discovery.renderers[0]
+                        )
+                    ),
+                }
+            )
         return web.json_response(result)
 
     async def _api_select_device(self, request: web.Request) -> web.Response:
@@ -278,10 +293,14 @@ class WebServer:
             if is_url:
                 mode = URLProxy.detect_mode(target)
                 await self._url_proxy.auto_cast(device, target)
-                return web.json_response({
-                    "ok": True, "device": device.name,
-                    "target": target, "mode": mode,
-                })
+                return web.json_response(
+                    {
+                        "ok": True,
+                        "device": device.name,
+                        "target": target,
+                        "mode": mode,
+                    }
+                )
             else:
                 await self._controller.play_file(device, target)
                 return web.json_response(
@@ -314,7 +333,8 @@ class WebServer:
                 await self._controller.set_volume(device, level)
             else:
                 return web.json_response(
-                    {"error": f"Unknown action: {action}"}, status=400,
+                    {"error": f"Unknown action: {action}"},
+                    status=400,
                 )
             return web.json_response({"ok": True, "action": action})
         except Exception as exc:
@@ -366,11 +386,14 @@ class WebServer:
 
         try:
             await self._controller.play_file(device, video_path)
-            return web.json_response({
-                "ok": True, "file": video_path.name,
-                "subtitle": subtitle_path.name if subtitle_path else None,
-                "device": device.name,
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "file": video_path.name,
+                    "subtitle": subtitle_path.name if subtitle_path else None,
+                    "device": device.name,
+                }
+            )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
@@ -379,15 +402,23 @@ class WebServer:
     async def _api_queue_get(self, request: web.Request) -> web.Response:
         items = []
         for i, q in enumerate(self._queue):
-            items.append({
-                "index": i, "target": q.target, "title": q.title,
-                "is_url": q.is_url, "subtitle": q.subtitle,
-                "current": i == self._queue_index,
-            })
-        return web.json_response({
-            "items": items, "index": self._queue_index,
-            "playing": self._queue_playing,
-        })
+            items.append(
+                {
+                    "index": i,
+                    "target": q.target,
+                    "title": q.title,
+                    "is_url": q.is_url,
+                    "subtitle": q.subtitle,
+                    "current": i == self._queue_index,
+                }
+            )
+        return web.json_response(
+            {
+                "items": items,
+                "index": self._queue_index,
+                "playing": self._queue_playing,
+            }
+        )
 
     async def _api_queue_add(self, request: web.Request) -> web.Response:
         data = await request.json()
@@ -397,13 +428,20 @@ class WebServer:
         for t in targets:
             is_url = t.startswith(("http://", "https://"))
             title = t.rsplit("/", 1)[-1] if "/" in t else t
-            self._queue.append(QueueItem(
-                target=t, title=title, is_url=is_url,
-                subtitle=data.get("subtitle"),
-            ))
-        await self._broadcast_ws({
-            "type": "queue", "items": len(self._queue),
-        })
+            self._queue.append(
+                QueueItem(
+                    target=t,
+                    title=title,
+                    is_url=is_url,
+                    subtitle=data.get("subtitle"),
+                )
+            )
+        await self._broadcast_ws(
+            {
+                "type": "queue",
+                "items": len(self._queue),
+            }
+        )
         return web.json_response({"ok": True, "length": len(self._queue)})
 
     async def _api_queue_remove(self, request: web.Request) -> web.Response:
@@ -415,7 +453,8 @@ class WebServer:
                 self._queue_index -= 1
             elif index == self._queue_index:
                 self._queue_index = min(
-                    self._queue_index, len(self._queue) - 1,
+                    self._queue_index,
+                    len(self._queue) - 1,
                 )
         return web.json_response({"ok": True, "length": len(self._queue)})
 
@@ -451,10 +490,7 @@ class WebServer:
         data = await request.json()
         from_idx = data.get("from", -1)
         to_idx = data.get("to", -1)
-        if (
-            0 <= from_idx < len(self._queue)
-            and 0 <= to_idx < len(self._queue)
-        ):
+        if 0 <= from_idx < len(self._queue) and 0 <= to_idx < len(self._queue):
             item = self._queue.pop(from_idx)
             self._queue.insert(to_idx, item)
             if self._queue_index == from_idx:
@@ -470,17 +506,26 @@ class WebServer:
         try:
             if item.is_url:
                 await self._controller.play_url(
-                    device, item.target, title=item.title,
+                    device,
+                    item.target,
+                    title=item.title,
                 )
             else:
                 await self._controller.play_file(device, item.target)
-            await self._broadcast_ws({
-                "type": "queue_playing", "index": index,
-                "title": item.title,
-            })
-            return web.json_response({
-                "ok": True, "index": index, "title": item.title,
-            })
+            await self._broadcast_ws(
+                {
+                    "type": "queue_playing",
+                    "index": index,
+                    "title": item.title,
+                }
+            )
+            return web.json_response(
+                {
+                    "ok": True,
+                    "index": index,
+                    "title": item.title,
+                }
+            )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
@@ -493,15 +538,19 @@ class WebServer:
                 try:
                     if item.is_url:
                         await self._controller.play_url(
-                            device, item.target, title=item.title,
+                            device,
+                            item.target,
+                            title=item.title,
                         )
                     else:
                         await self._controller.play_file(device, item.target)
-                    await self._broadcast_ws({
-                        "type": "queue_playing",
-                        "index": self._queue_index,
-                        "title": item.title,
-                    })
+                    await self._broadcast_ws(
+                        {
+                            "type": "queue_playing",
+                            "index": self._queue_index,
+                            "title": item.title,
+                        }
+                    )
                 except Exception as exc:
                     _LOGGER.error("Failed to play next queue item: %s", exc)
         else:
@@ -515,7 +564,8 @@ class WebServer:
         part = await reader.next()
         if not part or not part.filename:
             return web.json_response(
-                {"error": "No subtitle file"}, status=400,
+                {"error": "No subtitle file"},
+                status=400,
             )
 
         filename = part.filename
@@ -527,20 +577,26 @@ class WebServer:
                     break
                 f.write(chunk)
 
-        return web.json_response({
-            "ok": True, "file": filename, "path": str(filepath),
-        })
+        return web.json_response(
+            {
+                "ok": True,
+                "file": filename,
+                "path": str(filepath),
+            }
+        )
 
     # --- Settings API ---
 
     async def _api_settings_get(self, request: web.Request) -> web.Response:
         s = self._settings
-        return web.json_response({
-            "poll_interval": s.poll_interval,
-            "auto_scan": s.auto_scan,
-            "auto_scan_interval": s.auto_scan_interval,
-            "default_volume": s.default_volume,
-        })
+        return web.json_response(
+            {
+                "poll_interval": s.poll_interval,
+                "auto_scan": s.auto_scan,
+                "auto_scan_interval": s.auto_scan_interval,
+                "default_volume": s.default_volume,
+            }
+        )
 
     async def _api_settings_set(self, request: web.Request) -> web.Response:
         data = await request.json()
@@ -568,11 +624,13 @@ class WebServer:
             try:
                 await asyncio.sleep(self._settings.auto_scan_interval)
                 devices = await self._discovery.scan(timeout=3)
-                await self._broadcast_ws({
-                    "type": "devices",
-                    "count": len(devices),
-                    "names": [d.name for d in devices],
-                })
+                await self._broadcast_ws(
+                    {
+                        "type": "devices",
+                        "count": len(devices),
+                        "names": [d.name for d in devices],
+                    }
+                )
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -592,10 +650,15 @@ class WebServer:
 
         try:
             await self._mirror.start(device, fps=fps, quality=quality, audio=audio)
-            return web.json_response({
-                "ok": True, "device": device.name,
-                "fps": fps, "quality": quality, "audio": audio,
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "device": device.name,
+                    "fps": fps,
+                    "quality": quality,
+                    "audio": audio,
+                }
+            )
         except RuntimeError as exc:
             return web.json_response({"error": str(exc)}, status=400)
 
@@ -615,25 +678,33 @@ class WebServer:
             dirs_raw = [dirs_raw]
         if not dirs_raw:
             return web.json_response(
-                {"error": "No directories specified"}, status=400,
+                {"error": "No directories specified"},
+                status=400,
             )
 
         from pathlib import Path as _Path
+
         dirs = [_Path(d) for d in dirs_raw if _Path(d).is_dir()]
         if not dirs:
             return web.json_response(
-                {"error": "No valid directories found"}, status=400,
+                {"error": "No valid directories found"},
+                status=400,
             )
 
         self._media_server = MediaServer(
-            directories=dirs, host=self._host, port=self._port + 2,
+            directories=dirs,
+            host=self._host,
+            port=self._port + 2,
         )
         self._media_server.scan()
         total = len([n for n in self._media_server.get_all_items() if not n.is_container])
-        return web.json_response({
-            "ok": True, "total_items": total,
-            "directories": [str(d) for d in dirs],
-        })
+        return web.json_response(
+            {
+                "ok": True,
+                "total_items": total,
+                "directories": [str(d) for d in dirs],
+            }
+        )
 
     async def _api_library_browse(self, request: web.Request) -> web.Response:
         if not self._media_server:
@@ -670,8 +741,12 @@ class WebServer:
 
         try:
             await self._controller.play_file(device, node.path)
-            return web.json_response({
-                "ok": True, "title": node.title, "device": device.name,
-            })
+            return web.json_response(
+                {
+                    "ok": True,
+                    "title": node.title,
+                    "device": device.name,
+                }
+            )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)

@@ -75,16 +75,26 @@ class DesktopMirror:
             h = f"ih*{preset.scale_factor}"
             vf_filters.append(f"scale={w}:{h}")
 
-        cmd.extend([
-            "-vcodec", "libx264",
-            "-preset", preset.preset,
-            "-tune", "zerolatency",
-            "-pix_fmt", "yuv420p",
-            "-g", str(fps * 2),
-            "-b:v", bitrate,
-            "-maxrate", bitrate,
-            "-bufsize", bufsize,
-        ])
+        cmd.extend(
+            [
+                "-vcodec",
+                "libx264",
+                "-preset",
+                preset.preset,
+                "-tune",
+                "zerolatency",
+                "-pix_fmt",
+                "yuv420p",
+                "-g",
+                str(fps * 2),
+                "-b:v",
+                bitrate,
+                "-maxrate",
+                bitrate,
+                "-bufsize",
+                bufsize,
+            ]
+        )
 
         if vf_filters:
             cmd.extend(["-vf", ",".join(vf_filters)])
@@ -123,11 +133,14 @@ class DesktopMirror:
         self._running = True
 
         stream_url = await self._http_server.serve_stream(
-            self._process.stdout, content_type="video/mp2t",
+            self._process.stdout,
+            content_type="video/mp2t",
         )
 
         await self._controller.play_url(
-            device, stream_url, title="LanCaster Desktop Mirror",
+            device,
+            stream_url,
+            title="LanCaster Desktop Mirror",
         )
 
     async def stop(self) -> None:

@@ -14,6 +14,7 @@ from lancaster.transcoder import Transcoder
 
 # === Fixtures ===
 
+
 @pytest.fixture
 def ffprobe_mp4_output():
     """Simulated ffprobe JSON output for an H.264/AAC MP4 file."""
@@ -75,6 +76,7 @@ def ffprobe_mkv_hevc_output():
 
 
 # === Probe Tests ===
+
 
 class TestProbe:
     @pytest.mark.asyncio
@@ -158,12 +160,15 @@ class TestProbe:
 
 # === NeedsTranscode Tests ===
 
+
 class TestNeedsTranscode:
     def test_h264_aac_mp4_no_transcode(self):
         """H.264 + AAC + MP4 = universal, no transcode needed."""
         info = MediaInfo(
             path="/test.mp4",
-            video_codec="h264", audio_codec="aac", container="mp4",
+            video_codec="h264",
+            audio_codec="aac",
+            container="mp4",
         )
         assert not Transcoder.needs_transcode(info)
 
@@ -171,7 +176,8 @@ class TestNeedsTranscode:
         """MOV container with H.264 should not need transcode."""
         info = MediaInfo(
             path="/test.mov",
-            video_codec="h264", audio_codec="aac",
+            video_codec="h264",
+            audio_codec="aac",
             container="mov,mp4,m4a,3gp,3g2,mj2",
         )
         assert not Transcoder.needs_transcode(info)
@@ -180,7 +186,9 @@ class TestNeedsTranscode:
         """HEVC video codec needs transcode for most TVs."""
         info = MediaInfo(
             path="/test.mkv",
-            video_codec="hevc", audio_codec="aac", container="matroska",
+            video_codec="hevc",
+            audio_codec="aac",
+            container="matroska",
         )
         assert Transcoder.needs_transcode(info)
 
@@ -188,7 +196,9 @@ class TestNeedsTranscode:
         """VP9 needs transcode."""
         info = MediaInfo(
             path="/test.webm",
-            video_codec="vp9", audio_codec="opus", container="webm",
+            video_codec="vp9",
+            audio_codec="opus",
+            container="webm",
         )
         assert Transcoder.needs_transcode(info)
 
@@ -196,7 +206,9 @@ class TestNeedsTranscode:
         """DTS audio needs transcode even with H.264 video."""
         info = MediaInfo(
             path="/test.mp4",
-            video_codec="h264", audio_codec="dts", container="mp4",
+            video_codec="h264",
+            audio_codec="dts",
+            container="mp4",
         )
         assert Transcoder.needs_transcode(info)
 
@@ -204,7 +216,9 @@ class TestNeedsTranscode:
         """AC3 audio is commonly supported, no transcode."""
         info = MediaInfo(
             path="/test.mp4",
-            video_codec="h264", audio_codec="ac3", container="mp4",
+            video_codec="h264",
+            audio_codec="ac3",
+            container="mp4",
         )
         assert not Transcoder.needs_transcode(info)
 
@@ -212,7 +226,9 @@ class TestNeedsTranscode:
         """MKV container may need transcode (some TVs don't support)."""
         info = MediaInfo(
             path="/test.mkv",
-            video_codec="h264", audio_codec="aac", container="matroska",
+            video_codec="h264",
+            audio_codec="aac",
+            container="matroska",
         )
         assert Transcoder.needs_transcode(info)
 
@@ -220,7 +236,9 @@ class TestNeedsTranscode:
         """Custom safe codec set should be respected."""
         info = MediaInfo(
             path="/test.mkv",
-            video_codec="hevc", audio_codec="aac", container="matroska",
+            video_codec="hevc",
+            audio_codec="aac",
+            container="matroska",
         )
         safe = {"hevc"}, {"aac"}, {"matroska"}
         assert not Transcoder.needs_transcode(info, safe_codecs=safe)
@@ -229,12 +247,15 @@ class TestNeedsTranscode:
         """Audio-only file with supported codec should not transcode."""
         info = MediaInfo(
             path="/test.mp3",
-            video_codec="", audio_codec="mp3", container="mp3",
+            video_codec="",
+            audio_codec="mp3",
+            container="mp3",
         )
         assert not Transcoder.needs_transcode(info)
 
 
 # === HW Accel Detection ===
+
 
 class TestHWAccel:
     @pytest.mark.asyncio
@@ -267,6 +288,7 @@ class TestHWAccel:
 
 
 # === Transcode to File ===
+
 
 class TestTranscodeToFile:
     @pytest.mark.asyncio
@@ -303,11 +325,13 @@ class TestTranscodeToFile:
             t = Transcoder()
             with pytest.raises(TranscodeError, match="failed|error"):
                 await t.transcode_to_file(
-                    input_file, tmp_path / "output.mp4",
+                    input_file,
+                    tmp_path / "output.mp4",
                 )
 
 
 # === Transcode Stream ===
+
 
 class TestTranscodeStream:
     @pytest.mark.asyncio

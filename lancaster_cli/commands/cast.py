@@ -79,9 +79,7 @@ async def _cast(
     else:
         dev = renderers[0]
         if len(renderers) > 1:
-            console.print(
-                f"[yellow]Multiple renderers found, using: {dev.name}[/yellow]"
-            )
+            console.print(f"[yellow]Multiple renderers found, using: {dev.name}[/yellow]")
             console.print("Use -d to specify a device.")
 
     is_url = target.startswith(("http://", "https://"))
@@ -132,35 +130,28 @@ async def _cast_file(target, dev, no_transcode, console):
             )
 
             if Transcoder.needs_transcode(info):
-                console.print(
-                    "[yellow]File needs transcoding for DLNA compatibility.[/yellow]"
-                )
+                console.print("[yellow]File needs transcoding for DLNA compatibility.[/yellow]")
                 transcode_dir = Path.home() / ".lancaster" / "transcoded"
                 transcode_dir.mkdir(parents=True, exist_ok=True)
                 output = transcode_dir / f"{filepath.stem}_dlna.mp4"
 
                 hw = await Transcoder.detect_hw_accel()
                 vcodec = hw[0] if hw else "libx264"
-                console.print(
-                    f"  Transcoding with [bold]{vcodec}[/bold]..."
-                )
+                console.print(f"  Transcoding with [bold]{vcodec}[/bold]...")
 
                 t = Transcoder()
                 actual_file = await t.transcode_to_file(
-                    filepath, output, video_codec=vcodec,
+                    filepath,
+                    output,
+                    video_codec=vcodec,
                 )
                 console.print("[green]Transcode complete.[/green]")
             else:
                 console.print("[green]File is DLNA-compatible.[/green]")
         except Exception as exc:
-            console.print(
-                f"[yellow]Probe/transcode skipped: {exc}[/yellow]"
-            )
+            console.print(f"[yellow]Probe/transcode skipped: {exc}[/yellow]")
 
-    console.print(
-        f"Casting [cyan]{actual_file.name}[/cyan] "
-        f"to [bold]{dev.name}[/bold]..."
-    )
+    console.print(f"Casting [cyan]{actual_file.name}[/cyan] to [bold]{dev.name}[/bold]...")
     await controller.play_file(dev, actual_file)
 
     console.print("[green]Playing![/green] Press Ctrl+C to stop.")

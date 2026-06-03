@@ -153,9 +153,7 @@ class MediaController:
         try:
             action = dmr._action("RC", "SetVolume")
             if action:
-                await action.async_call(
-                    InstanceID=0, Channel="Master", DesiredVolume=level
-                )
+                await action.async_call(InstanceID=0, Channel="Master", DesiredVolume=level)
         except Exception as exc:
             raise PlaybackError(f"Failed to set volume: {exc}") from exc
 

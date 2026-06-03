@@ -50,15 +50,11 @@ async def _probe(filepath: str, console: Console) -> None:
 
     needs = Transcoder.needs_transcode(info)
     if needs:
-        console.print(
-            "\n[yellow]This file needs transcoding for DLNA compatibility.[/yellow]"
-        )
+        console.print("\n[yellow]This file needs transcoding for DLNA compatibility.[/yellow]")
         hw = await Transcoder.detect_hw_accel()
         if hw:
             console.print(f"  HW accelerators available: {', '.join(hw)}")
         else:
             console.print("  No HW acceleration detected, will use libx264.")
     else:
-        console.print(
-            "\n[green]This file is DLNA-compatible, no transcoding needed.[/green]"
-        )
+        console.print("\n[green]This file is DLNA-compatible, no transcoding needed.[/green]")

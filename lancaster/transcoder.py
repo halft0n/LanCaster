@@ -33,18 +33,20 @@ class Transcoder:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "ffprobe", "-v", "quiet",
-                "-print_format", "json",
-                "-show_format", "-show_streams",
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
                 str(filepath),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await proc.communicate()
         except FileNotFoundError:
-            raise TranscodeError(
-                "ffprobe not found. Please install FFmpeg."
-            ) from None
+            raise TranscodeError("ffprobe not found. Please install FFmpeg.") from None
 
         if proc.returncode != 0:
             raise TranscodeError(
@@ -99,6 +101,7 @@ class Transcoder:
         container = fmt.get("format_name", "")
 
         from lancaster.utils import guess_mime_type
+
         mime_type = guess_mime_type(path)
 
         return MediaInfo(
@@ -148,10 +151,16 @@ class Transcoder:
         output_path = Path(output_path)
 
         cmd = [
-            "ffmpeg", "-y", "-i", str(input_path),
-            "-vcodec", video_codec,
-            "-acodec", audio_codec,
-            "-movflags", "+faststart",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vcodec",
+            video_codec,
+            "-acodec",
+            audio_codec,
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -184,10 +193,15 @@ class Transcoder:
         input_path = Path(input_path)
 
         cmd = [
-            "ffmpeg", "-i", str(input_path),
-            "-vcodec", video_codec,
-            "-acodec", audio_codec,
-            "-f", "mpegts",
+            "ffmpeg",
+            "-i",
+            str(input_path),
+            "-vcodec",
+            video_codec,
+            "-acodec",
+            audio_codec,
+            "-f",
+            "mpegts",
             "pipe:1",
         ]
 
@@ -216,7 +230,9 @@ class Transcoder:
         """Detect available hardware-accelerated H.264 encoders."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-hide_banner", "-encoders",
+                "ffmpeg",
+                "-hide_banner",
+                "-encoders",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

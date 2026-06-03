@@ -37,12 +37,8 @@ async def _serve(directories: tuple[str, ...], port: int, console: Console) -> N
     server = MediaServer(directories=dirs, port=port)
     server.scan()
 
-    total_items = sum(
-        1 for n in server.get_all_items() if not n.is_container
-    )
-    total_dirs = sum(
-        1 for n in server.get_all_items() if n.is_container
-    ) - 1
+    total_items = sum(1 for n in server.get_all_items() if not n.is_container)
+    total_dirs = sum(1 for n in server.get_all_items() if n.is_container) - 1
 
     console.print("\n[bold green]LanCaster Media Server[/bold green]")
     console.print(f"  Sharing: {', '.join(str(d) for d in dirs)}")

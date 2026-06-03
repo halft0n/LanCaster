@@ -18,20 +18,24 @@ from lancaster.web import WebServer
 
 def _make_device(name="Test TV", ip="192.168.1.100", dtype=DeviceType.RENDERER):
     return DLNADevice(
-        name=name, ip=ip,
+        name=name,
+        ip=ip,
         location=f"http://{ip}:49152/description.xml",
-        device_type=dtype, manufacturer="TestCorp",
-        model="Model-X", udn=f"uuid:{name.lower().replace(' ', '-')}",
+        device_type=dtype,
+        manufacturer="TestCorp",
+        model="Model-X",
+        udn=f"uuid:{name.lower().replace(' ', '-')}",
     )
 
 
 @pytest.fixture
 def web_server():
     """Create a WebServer with mocked internal services."""
-    with patch("lancaster.web.HTTPFileServer") as mock_http, \
-         patch("lancaster.web.DeviceDiscovery") as mock_disc, \
-         patch("lancaster.web.MediaController") as mock_ctrl:
-
+    with (
+        patch("lancaster.web.HTTPFileServer") as mock_http,
+        patch("lancaster.web.DeviceDiscovery") as mock_disc,
+        patch("lancaster.web.MediaController") as mock_ctrl,
+    ):
         mock_http_inst = MagicMock()
         mock_http_inst.start = AsyncMock()
         mock_http_inst.stop = AsyncMock()
@@ -73,6 +77,7 @@ def client(web_server, aiohttp_client):
 
 # === Index Page ===
 
+
 class TestIndexPage:
     @pytest.mark.asyncio
     async def test_index_returns_html(self, client):
@@ -85,6 +90,7 @@ class TestIndexPage:
 
 
 # === Device API ===
+
 
 class TestDeviceAPI:
     @pytest.mark.asyncio
@@ -119,6 +125,7 @@ class TestDeviceAPI:
 
 
 # === Cast API ===
+
 
 class TestCastAPI:
     @pytest.mark.asyncio
@@ -158,6 +165,7 @@ class TestCastAPI:
 
 
 # === Control API ===
+
 
 class TestControlAPI:
     @pytest.mark.asyncio
@@ -214,6 +222,7 @@ class TestControlAPI:
 
 # === Status API ===
 
+
 class TestStatusAPI:
     @pytest.mark.asyncio
     async def test_status_no_device(self, client, web_server):
@@ -235,7 +244,8 @@ class TestStatusAPI:
                 state=TransportState.PLAYING,
                 position=timedelta(minutes=5, seconds=30),
                 duration=timedelta(hours=1, minutes=30),
-                volume=65, title="Test Movie",
+                volume=65,
+                title="Test Movie",
             )
         )
         c = await client
@@ -247,6 +257,7 @@ class TestStatusAPI:
 
 
 # === Queue API ===
+
 
 class TestQueueAPI:
     @pytest.mark.asyncio
@@ -260,10 +271,15 @@ class TestQueueAPI:
     @pytest.mark.asyncio
     async def test_queue_add_and_get(self, client, web_server):
         c = await client
-        resp = await c.post("/api/queue/add", json={"targets": [
-            "http://example.com/a.mp4",
-            "/home/user/b.mkv",
-        ]})
+        resp = await c.post(
+            "/api/queue/add",
+            json={
+                "targets": [
+                    "http://example.com/a.mp4",
+                    "/home/user/b.mkv",
+                ]
+            },
+        )
         data = await resp.json()
         assert data["ok"] is True
         assert data["length"] == 2
@@ -357,6 +373,7 @@ class TestQueueAPI:
 
 # === Settings API ===
 
+
 class TestSettingsAPI:
     @pytest.mark.asyncio
     async def test_get_defaults(self, client, web_server):
@@ -370,10 +387,13 @@ class TestSettingsAPI:
     @pytest.mark.asyncio
     async def test_update_settings(self, client, web_server):
         c = await client
-        resp = await c.post("/api/settings", json={
-            "poll_interval": 3.0,
-            "default_volume": 80,
-        })
+        resp = await c.post(
+            "/api/settings",
+            json={
+                "poll_interval": 3.0,
+                "default_volume": 80,
+            },
+        )
         assert (await resp.json())["ok"] is True
 
         resp = await c.get("/api/settings")
@@ -391,6 +411,7 @@ class TestSettingsAPI:
 
 
 # === WebSocket ===
+
 
 class TestWebSocket:
     @pytest.mark.asyncio

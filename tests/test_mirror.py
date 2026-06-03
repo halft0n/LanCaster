@@ -14,7 +14,8 @@ from lancaster.models import DeviceType, DLNADevice
 
 def _make_device(name="Test TV"):
     return DLNADevice(
-        name=name, ip="192.168.1.100",
+        name=name,
+        ip="192.168.1.100",
         location="http://192.168.1.100:49152/description.xml",
         device_type=DeviceType.RENDERER,
     )

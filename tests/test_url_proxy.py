@@ -12,7 +12,8 @@ from lancaster.url_proxy import URLProxy
 
 def _make_device(name="Test TV"):
     return DLNADevice(
-        name=name, ip="192.168.1.100",
+        name=name,
+        ip="192.168.1.100",
         location="http://192.168.1.100:49152/description.xml",
         device_type=DeviceType.RENDERER,
     )
@@ -43,6 +44,7 @@ def proxy(mock_http_server, mock_controller):
 
 # === Mode Detection ===
 
+
 class TestDetectMode:
     def test_http_mp4_direct(self):
         assert URLProxy.detect_mode("http://example.com/video.mp4") == "direct"
@@ -71,6 +73,7 @@ class TestDetectMode:
 
 
 # === Auto Cast ===
+
 
 class TestAutoCast:
     @pytest.mark.asyncio
@@ -113,17 +116,21 @@ class TestAutoCast:
 
 # === Direct Cast ===
 
+
 class TestDirectCast:
     @pytest.mark.asyncio
     async def test_cast_direct(self, proxy, mock_controller):
         device = _make_device()
         await proxy.cast_direct(device, "http://example.com/movie.mp4")
         mock_controller.play_url.assert_awaited_once_with(
-            device, "http://example.com/movie.mp4", title="movie.mp4",
+            device,
+            "http://example.com/movie.mp4",
+            title="movie.mp4",
         )
 
 
 # === Proxied Cast ===
+
 
 class TestProxiedCast:
     @pytest.mark.asyncio
@@ -150,13 +157,15 @@ class TestProxiedCast:
             mock_session_cls.return_value = mock_session
 
             await proxy.cast_proxied(
-                device, "https://cdn.example.com/video.mp4",
+                device,
+                "https://cdn.example.com/video.mp4",
             )
 
         mock_controller.play_url.assert_awaited_once()
 
 
 # === URL Parsing ===
+
 
 class TestURLParsing:
     def test_extract_filename_simple(self):

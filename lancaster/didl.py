@@ -37,16 +37,12 @@ class DIDLBuilder:
             dur_attr = f' duration="{format_duration(duration)}"'
 
         protocol_info = f"http-get:*:{escape(mime)}:*"
-        res_element = (
-            f'<res protocolInfo="{protocol_info}"{dur_attr}>'
-            f"{escape(url)}</res>"
-        )
+        res_element = f'<res protocolInfo="{protocol_info}"{dur_attr}>{escape(url)}</res>'
 
         subtitle_element = ""
         if subtitle_url:
             subtitle_element = (
-                f'<sec:CaptionInfoEx sec:type="srt">'
-                f"{escape(subtitle_url)}</sec:CaptionInfoEx>"
+                f'<sec:CaptionInfoEx sec:type="srt">{escape(subtitle_url)}</sec:CaptionInfoEx>'
             )
 
         item_xml = (
@@ -77,10 +73,7 @@ class DIDLBuilder:
             dur_attr = f' duration="{format_duration(duration)}"'
 
         protocol_info = f"http-get:*:{escape(mime)}:*"
-        res_element = (
-            f'<res protocolInfo="{protocol_info}"{dur_attr}>'
-            f"{escape(url)}</res>"
-        )
+        res_element = f'<res protocolInfo="{protocol_info}"{dur_attr}>{escape(url)}</res>'
 
         extra = ""
         if artist:

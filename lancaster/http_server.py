@@ -101,8 +101,7 @@ class HTTPFileServer:
             "Connection": "keep-alive",
             "TransferMode.DLNA.ORG": "Streaming",
             "ContentFeatures.DLNA.ORG": (
-                "DLNA.ORG_OP=01;"
-                "DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             ),
         }
 

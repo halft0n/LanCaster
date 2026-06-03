@@ -48,8 +48,10 @@ def server(media_dir):
 class TestMediaNode:
     def test_create_container(self):
         node = MediaNode(
-            object_id="0", parent_id="-1",
-            title="Root", is_container=True,
+            object_id="0",
+            parent_id="-1",
+            title="Root",
+            is_container=True,
         )
         assert node.is_container
         assert node.children == []
@@ -58,8 +60,10 @@ class TestMediaNode:
         f = tmp_path / "test.mp4"
         f.write_bytes(b"\x00")
         node = MediaNode(
-            object_id="1", parent_id="0",
-            title="test.mp4", is_container=False,
+            object_id="1",
+            parent_id="0",
+            title="test.mp4",
+            is_container=False,
             path=f,
         )
         assert not node.is_container

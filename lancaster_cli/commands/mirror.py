@@ -23,8 +23,10 @@ from lancaster.models import DeviceType
 @click.option("-t", "--timeout", default=5.0, help="Device scan timeout.")
 @click.option("--fps", default=30, help="Frame rate (default: 30).")
 @click.option(
-    "--quality", type=click.Choice(["low", "medium", "high"]),
-    default="medium", help="Quality preset.",
+    "--quality",
+    type=click.Choice(["low", "medium", "high"]),
+    default="medium",
+    help="Quality preset.",
 )
 @click.option("--audio", is_flag=True, help="Capture system audio (experimental).")
 def mirror(
@@ -80,10 +82,7 @@ async def _mirror(
     controller = MediaController(http_server=http_server)
     dm = DesktopMirror(http_server=http_server, controller=controller)
 
-    console.print(
-        f"Mirroring desktop to [bold]{dev.name}[/bold] "
-        f"({quality}, {fps}fps)..."
-    )
+    console.print(f"Mirroring desktop to [bold]{dev.name}[/bold] ({quality}, {fps}fps)...")
 
     try:
         await dm.start(dev, fps=fps, quality=quality, audio=audio)

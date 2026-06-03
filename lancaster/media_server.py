@@ -13,18 +13,50 @@ from lancaster.http_server import HTTPFileServer
 _LOGGER = logging.getLogger(__name__)
 
 _MEDIA_EXTENSIONS = {
-    ".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".ts", ".m2ts",
-    ".webm", ".3gp", ".ogv",
-    ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".wma", ".aac",
+    ".mp4",
+    ".m4v",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".ts",
+    ".m2ts",
+    ".webm",
+    ".3gp",
+    ".ogv",
+    ".mp3",
+    ".m4a",
+    ".flac",
+    ".wav",
+    ".ogg",
+    ".wma",
+    ".aac",
 }
 
 _VIDEO_EXTENSIONS = {
-    ".mp4", ".m4v", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".ts", ".m2ts",
-    ".webm", ".3gp", ".ogv",
+    ".mp4",
+    ".m4v",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".ts",
+    ".m2ts",
+    ".webm",
+    ".3gp",
+    ".ogv",
 }
 
 _AUDIO_EXTENSIONS = {
-    ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".wma", ".aac",
+    ".mp3",
+    ".m4a",
+    ".flac",
+    ".wav",
+    ".ogg",
+    ".wma",
+    ".aac",
 }
 
 
@@ -71,8 +103,10 @@ class MediaServer:
     def scan(self) -> None:
         """Scan configured directories and build the media tree."""
         self._root = MediaNode(
-            object_id="0", parent_id="-1",
-            title="LanCaster Media", is_container=True,
+            object_id="0",
+            parent_id="-1",
+            title="LanCaster Media",
+            is_container=True,
         )
         self._node_map = {"0": self._root}
         self._next_id = 1
@@ -151,9 +185,9 @@ class MediaServer:
                 parts.append(
                     f'<container id="{item.object_id}" parentID="{item.parent_id}"'
                     f' childCount="{len(item.children)}" restricted="true">'
-                    f'<dc:title>{escape(item.title)}</dc:title>'
-                    f'<upnp:class>object.container.storageFolder</upnp:class>'
-                    f'</container>'
+                    f"<dc:title>{escape(item.title)}</dc:title>"
+                    f"<upnp:class>object.container.storageFolder</upnp:class>"
+                    f"</container>"
                 )
             else:
                 upnp_class = (
@@ -161,19 +195,16 @@ class MediaServer:
                     if item.path and item.path.suffix.lower() in _VIDEO_EXTENSIONS
                     else "object.item.audioItem.musicTrack"
                 )
-                res_url = (
-                    f"http://{self._host}:{self._port}"
-                    f"/files/{item.object_id}"
-                )
+                res_url = f"http://{self._host}:{self._port}/files/{item.object_id}"
                 parts.append(
                     f'<item id="{item.object_id}" parentID="{item.parent_id}"'
                     f' restricted="true">'
-                    f'<dc:title>{escape(item.title)}</dc:title>'
-                    f'<upnp:class>{upnp_class}</upnp:class>'
+                    f"<dc:title>{escape(item.title)}</dc:title>"
+                    f"<upnp:class>{upnp_class}</upnp:class>"
                     f'<res protocolInfo="http-get:*:{item.mime_type}:*">'
-                    f'{escape(res_url)}</res>'
-                    f'</item>'
+                    f"{escape(res_url)}</res>"
+                    f"</item>"
                 )
 
-        parts.append('</DIDL-Lite>')
+        parts.append("</DIDL-Lite>")
         return "\n".join(parts)

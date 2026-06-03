@@ -17,8 +17,16 @@ _LOGGER = logging.getLogger(__name__)
 _UPLOAD_DIR = Path.home() / ".lancaster" / "downloads"
 
 _DIRECT_EXTENSIONS = {
-    ".mp4", ".m4v", ".mkv", ".avi", ".mov", ".ts",
-    ".mp3", ".m4a", ".flac", ".wav",
+    ".mp4",
+    ".m4v",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".ts",
+    ".mp3",
+    ".m4a",
+    ".flac",
+    ".wav",
     ".m3u8",
 }
 
@@ -103,9 +111,7 @@ class URLProxy:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    raise ConnectionError(
-                        f"Failed to download {url}: HTTP {resp.status}"
-                    )
+                    raise ConnectionError(f"Failed to download {url}: HTTP {resp.status}")
                 data = await resp.read()
                 local_path.write_bytes(data)
 

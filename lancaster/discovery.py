@@ -93,9 +93,7 @@ class DeviceDiscovery:
             await self._listener.async_stop()
             self._listener = None
 
-    async def _register_device(
-        self, ssdp_device: SsdpDevice, dst: str
-    ) -> DLNADevice | None:
+    async def _register_device(self, ssdp_device: SsdpDevice, dst: str) -> DLNADevice | None:
         """Fetch device description and register it."""
         location = ssdp_device.location
         if not location:
