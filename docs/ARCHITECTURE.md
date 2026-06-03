@@ -651,9 +651,9 @@ lancaster
 | Phase | 内容 | 周期 | 状态 |
 |-------|------|------|------|
 | 1 | 核心投屏 MVP | 1-2 周 | 已完成 |
-| 2 | FFmpeg 转码 + URL 代理 + 增强控制 | 2 周 | 计划中 |
-| 3 | 媒体库共享 (DMS) + 桌面镜像 | 3 周 | 计划中 |
-| 4 | GUI（PyQt6 / Tauri / Web） | 开放 | 计划中 |
+| 2 | FFmpeg 转码 + URL 代理 + Web UI | 2 周 | 已完成 |
+| 3 | 媒体库共享 (DMS) + 桌面镜像 | 3 周 | 已完成 |
+| 4 | 桌面应用 (pywebview + pystray + PyInstaller) | 1 周 | 已完成 |
 
 ---
 
@@ -1078,6 +1078,101 @@ with loop:
     loop.run_until_complete(main())
 ```
 
+### 12.5 Phase 4 最终实现: pywebview 桌面应用
+
+经过对 5 种方案（pywebview, Tauri 2.0, PySide6, Flet, Electron）的深入对比，
+最终选定 **pywebview** 作为桌面 GUI 方案。详细的选型对比见项目 plan 文件。
+
+#### 12.5.1 架构设计
+
+```
+┌─────────────────────────────────────────────┐
+│  lancaster desktop  (CLI 命令)              │
+├─────────────────────────────────────────────┤
+│  DesktopApp                                 │
+│  ├── Thread-1: asyncio event loop           │
+│  │   └── aiohttp WebServer (web.py)         │
+│  │       ├── REST API                       │
+│  │       ├── WebSocket                      │
+│  │       └── Static files                   │
+│  ├── Main Thread: pywebview                 │
+│  │   └── Native Window → http://127.0.0.1   │
+│  │       ├── js_api: _DesktopBridge         │
+│  │       ├── events: shown, closing         │
+│  │       └── confirm_close (非 debug 模式)  │
+│  └── Thread-2: pystray                      │
+│      └── System Tray Icon                   │
+│          ├── 显示窗口 (默认双击)            │
+│          └── 退出                           │
+└─────────────────────────────────────────────┘
+```
+
+**关键设计决策：**
+
+1. **同进程架构**：aiohttp 在后台线程运行，pywebview 在主线程运行。
+   无 IPC 开销，Python bridge 可直接访问后端对象。
+
+2. **延迟导入**：`import webview` 仅在 `run()` 中执行，
+   未安装 `pywebview` 时其他模块不受影响。
+
+3. **优雅降级**：`pystray` 不可用时仍可正常运行（无托盘图标）。
+
+#### 12.5.2 JS Bridge (`_DesktopBridge`)
+
+通过 `window.pywebview.api` 暴露 Python 方法给 JavaScript 调用：
+
+| 方法 | 说明 |
+|------|------|
+| `cast_dropped_files(paths)` | 解析拖拽的文件，分离视频和字幕 |
+| `get_platform()` | 返回 `sys.platform` |
+| `minimize_to_tray()` | 隐藏窗口到托盘 |
+
+**文件拖拽流程：**
+
+```
+OS 文件管理器拖拽
+  → HTML5 drop event (index.html)
+  → isDesktop 检测
+  → window.pywebview.api.cast_dropped_files(filenames)
+  → Python: 解析视频/字幕扩展名
+  → 返回 {ok, video, subtitle}
+  → JS: 填充 castPath, 调用 castTarget()
+  → REST API /api/cast
+```
+
+#### 12.5.3 Web UI 桌面模式适配
+
+前端通过 `window.pywebview` 存在性检测桌面模式：
+
+- `isDesktop` 状态变量：控制桌面模式专属 UI
+- 全局拖拽覆盖层：视觉反馈（紫色半透明 + 图标）
+- Header 标识：显示 "桌面版"
+- Status bar：显示桌面版指示器
+
+#### 12.5.4 系统托盘
+
+使用 `pystray` 在独立 daemon 线程中运行：
+
+- 图标优先从 `assets/icon-64.png` 加载，不存在时动态生成
+- 菜单项：显示窗口（默认/双击）、退出
+- 通过回调与 `DesktopApp` 交互
+
+#### 12.5.5 打包与分发
+
+| 方式 | 命令 | 产物 |
+|------|------|------|
+| 开发模式 | `pip install -e ".[desktop]"` + `lancaster desktop` | 直接运行 |
+| 独立安装 | `pip install lancaster[desktop]` | pip 安装后运行 |
+| PyInstaller | `pyinstaller lancaster.spec` | `dist/LanCaster/` 目录 |
+| CI 自动构建 | 推送 `v*` tag | Windows/macOS/Linux 三平台可执行文件 |
+
+PyInstaller spec 文件配置要点：
+- `console=False`：无控制台窗口
+- `datas` 包含 `templates/` 和 `assets/`
+- `hiddenimports` 显式列出所有核心模块
+- `excludes` 排除 tkinter/matplotlib 等减小体积
+- `icon` 使用 `assets/icon.ico`
+
 ---
 
 ## 13. 部署与分发
@@ -1085,17 +1180,23 @@ with loop:
 ### 13.1 PyInstaller 打包
 
 ```bash
-# 单文件 exe（含 Python 运行时）
-pyinstaller --onefile --name lancaster \
-  --add-data "lancaster_web/templates:templates" \
-  lancaster_cli/app.py
+# 使用 spec 文件构建（推荐）
+pyinstaller lancaster.spec
+# 输出: dist/LanCaster/ (含可执行文件 + 依赖)
 ```
 
-### 13.2 未来考虑
+### 13.2 GitHub Actions 自动构建
+
+推送 `v*` 标签时自动触发 `.github/workflows/build.yml`：
+- 三平台并行构建 (Windows / macOS / Linux)
+- 自动上传 artifact（保留 30 天）
+- 自动创建 GitHub Release 并附加压缩包
+
+### 13.3 分发方式
 
 | 分发方式 | 适用场景 |
 |----------|---------|
-| PyPI (`pip install lancaster`) | 开发者/高级用户 |
-| GitHub Releases (exe) | Windows 普通用户 |
-| Microsoft Store (MSIX) | 如果做 WinUI 3 版本 |
+| PyPI (`pip install lancaster`) | 开发者/高级用户 (CLI/Web) |
+| PyPI (`pip install lancaster[desktop]`) | 桌面应用用户 |
+| GitHub Releases (PyInstaller) | 普通用户（Windows/macOS/Linux） |
 | Docker | NAS/服务器用户 |

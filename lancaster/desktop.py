@@ -13,6 +13,26 @@ _LOGGER = logging.getLogger(__name__)
 _ICON_SIZE = 64
 _DEFAULT_WIDTH = 1060
 _DEFAULT_HEIGHT = 780
+_ASSETS_DIR = Path(__file__).parent.parent / "assets"
+
+
+def _load_tray_image():
+    """Load the tray icon image, falling back to a generated one."""
+    from PIL import Image, ImageDraw
+
+    icon_path = _ASSETS_DIR / "icon-64.png"
+    if icon_path.exists():
+        return Image.open(icon_path).convert("RGBA")
+
+    img = Image.new("RGBA", (_ICON_SIZE, _ICON_SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle(
+        [4, 4, _ICON_SIZE - 4, _ICON_SIZE - 4],
+        radius=12,
+        fill=(108, 92, 231),
+    )
+    draw.text((_ICON_SIZE // 2 - 8, _ICON_SIZE // 2 - 12), "L", fill="white")
+    return img
 
 
 def _create_tray_icon(
@@ -22,23 +42,11 @@ def _create_tray_icon(
     """Create a system tray icon in a separate thread."""
     try:
         import pystray
-        from PIL import Image, ImageDraw
     except ImportError:
         _LOGGER.warning("pystray/Pillow not installed, skipping tray icon")
         return
 
-    img = Image.new("RGBA", (_ICON_SIZE, _ICON_SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(
-        [4, 4, _ICON_SIZE - 4, _ICON_SIZE - 4],
-        radius=12,
-        fill=(108, 92, 231),
-    )
-    draw.text(
-        (_ICON_SIZE // 2 - 8, _ICON_SIZE // 2 - 12),
-        "L",
-        fill="white",
-    )
+    img = _load_tray_image()
 
     menu = pystray.Menu(
         pystray.MenuItem("显示窗口", lambda: show_cb(), default=True),

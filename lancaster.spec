@@ -19,6 +19,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(root / "lancaster" / "templates"), "lancaster/templates"),
+        (str(root / "assets"), "assets"),
     ],
     hiddenimports=[
         "lancaster",
@@ -70,7 +71,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=[str(root / "assets" / "icon.ico")],
 )
 
 coll = COLLECT(
