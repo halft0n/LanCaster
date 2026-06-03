@@ -220,12 +220,11 @@ class _DesktopBridge:
         subtitle_file = None
 
         for fp in file_paths:
-            p = Path(fp)
-            ext = p.suffix.lower()
+            ext = Path(fp).suffix.lower()
             if ext in subtitle_exts:
-                subtitle_file = str(p)
+                subtitle_file = fp
             elif ext in media_exts:
-                video_file = str(p)
+                video_file = fp
 
         if not video_file and file_paths:
             video_file = file_paths[0]
