@@ -250,6 +250,321 @@ DIDL-Lite（Digital Item Declaration Language - Lite）是 UPnP 用于描述媒�
 </DIDL-Lite>
 ```
 
+### 4.5 Transcoder (`lancaster/transcoder.py`) — Phase 2
+
+**职责**：通过 FFmpeg 检测媒体格式并按需转码，解决电视不支持的编解码器问题。
+
+**设计决策**：
+- 使用 `subprocess` 调用 FFmpeg CLI，而非 FFI 绑定（如 ffmpeg-python），原因：
+  - 进程隔离更安全，FFmpeg 崩溃不影响主进程
+  - 无需编译 C 扩展，安装更简单
+  - FFmpeg CLI 功能最完整，文档最丰富
+
+**API**：
+
+```python
+class Transcoder:
+    @staticmethod
+    async def probe(filepath: Path) -> MediaInfo
+        """用 ffprobe 提取媒体元数据（编码、分辨率、时长、字幕轨等）。"""
+
+    @staticmethod
+    def needs_transcode(media_info: MediaInfo, safe_codecs=None) -> bool
+        """判断是否需要转码。默认安全集: H.264+AAC+MP4。"""
+
+    async def transcode_to_file(
+        self, input_path: Path, output_path: Path, **opts
+    ) -> Path
+        """离线转码：将文件转为兼容格式并写入新文件。"""
+
+    async def transcode_stream(
+        self, input_path: Path, **opts
+    ) -> AsyncIterator[bytes]
+        """实时流式转码：输出 MPEG-TS 管道流，配合 HTTPFileServer 使用。"""
+
+    @staticmethod
+    async def detect_hw_accel() -> list[str]
+        """检测可用的硬件加速器（nvenc/qsv/amf）。"""
+```
+
+**转码策略**：
+
+```
+输入文件
+  │
+  ├─ ffprobe 分析编码信息
+  │
+  ├─ 视频: H.264 + 音频: AAC + 容器: MP4?
+  │    ├─ 是 → 直传（不转码）
+  │    └─ 否 → 需要转码
+  │         │
+  │         ├─ 检测硬件加速
+  │         │   ├─ NVIDIA → -vcodec h264_nvenc
+  │         │   ├─ Intel  → -vcodec h264_qsv
+  │         │   ├─ AMD    → -vcodec h264_amf
+  │         │   └─ 无     → -vcodec libx264
+  │         │
+  │         ├─ 实时流模式: -f mpegts pipe:1
+  │         └─ 文件模式:   -f mp4 output.mp4
+```
+
+**ffprobe 输出解析示例**：
+
+```bash
+ffprobe -v quiet -print_format json -show_format -show_streams input.mkv
+```
+
+```json
+{
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "hevc",
+      "width": 1920, "height": 1080,
+      "bit_rate": "5000000"
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "dts",
+      "channels": 6
+    },
+    {
+      "codec_type": "subtitle",
+      "codec_name": "subrip"
+    }
+  ],
+  "format": {
+    "format_name": "matroska",
+    "duration": "7200.000"
+  }
+}
+```
+
+**TDD 测试计划**：
+
+```python
+# test_transcoder.py — 在实现 transcoder.py 之前先写
+class TestProbe:
+    async def test_probe_mp4_returns_media_info(self, sample_mp4):
+        """ffprobe 应正确解析 H.264+AAC MP4 文件。"""
+    async def test_probe_nonexistent_raises(self):
+        """不存在的文件应抛出 TranscodeError。"""
+    async def test_probe_without_ffmpeg_raises(self, monkeypatch):
+        """ffprobe 不存在时应给出友好错误信息。"""
+
+class TestNeedsTranscode:
+    def test_h264_aac_mp4_no_transcode(self):
+        """H.264+AAC+MP4 不需要转码。"""
+    def test_hevc_needs_transcode(self):
+        """HEVC 视频需要转码。"""
+    def test_dts_audio_needs_transcode(self):
+        """DTS 音频需要转码。"""
+    def test_mkv_container_needs_transcode(self):
+        """MKV 容器需要转码（部分电视不支持）。"""
+
+class TestTranscodeStream:
+    async def test_stream_produces_bytes(self, sample_mp4):
+        """流式转码应产生 MPEG-TS 字节流。"""
+    async def test_stream_cancellation(self, sample_mp4):
+        """取消转码任务应终止 FFmpeg 进程。"""
+```
+
+### 4.6 URLProxy (`lancaster/url_proxy.py`) — Phase 2
+
+**职责**：处理在线 URL 投屏的三种模式。
+
+**三种投屏模式**：
+
+```
+模式 1: 直投（电视直接拉取）
+  PC ──SetURI(url)──> 电视 ──HTTP GET──> 互联网
+  适用: 公网 HTTP MP4/M3U8，电视可直达
+
+模式 2: 代理中继（PC 中转）
+  互联网 ──HTTP──> PC(代理) ──HTTP──> 电视
+  适用: HTTPS URL（多数电视不支持）、需认证的 URL、PC 有 VPN
+
+模式 3: 代理 + 转码
+  互联网 ──HTTP──> PC ──FFmpeg──> PC(HTTP) ──> 电视
+  适用: 格式不兼容的在线视频
+```
+
+**API**：
+
+```python
+class URLProxy:
+    def __init__(self, http_server: HTTPFileServer, controller: MediaController):
+        ...
+
+    async def cast_direct(self, device: DLNADevice, url: str) -> None
+        """直投: 将 URL 直接发送给电视。"""
+
+    async def cast_proxied(self, device: DLNADevice, url: str) -> None
+        """代理: PC 下载并通过本地 HTTP 服务器中继。"""
+
+    async def cast_with_transcode(
+        self, device: DLNADevice, url: str, **transcode_opts
+    ) -> None
+        """代理+转码: 下载 → FFmpeg 转码 → HTTP 流 → 电视。"""
+
+    @staticmethod
+    def detect_mode(url: str) -> str
+        """根据 URL 特征自动判断最佳模式。
+        - http:// + .mp4/.m3u8 → direct
+        - https:// → proxied
+        - 其他 → proxied
+        """
+```
+
+**TDD 测试计划**：
+
+```python
+# test_url_proxy.py
+class TestDetectMode:
+    def test_http_mp4_direct(self):
+        assert URLProxy.detect_mode("http://example.com/video.mp4") == "direct"
+    def test_https_proxied(self):
+        assert URLProxy.detect_mode("https://example.com/video.mp4") == "proxied"
+    def test_m3u8_direct(self):
+        assert URLProxy.detect_mode("http://example.com/live.m3u8") == "direct"
+```
+
+### 4.7 MediaServer (`lancaster/server.py`) — Phase 3
+
+**职责**：将 PC 的指定目录作为 DLNA Media Server 广播，电视可主动浏览和播放。
+
+**与 HTTPFileServer 的区别**：
+
+| 维度 | HTTPFileServer (Phase 1) | MediaServer (Phase 3) |
+|------|--------------------------|----------------------|
+| 角色 | 被动提供单个文件的 HTTP 访问 | 完整的 UPnP DMS 设备 |
+| 发现 | 不在 SSDP 中广播 | 通过 SSDP 广播自己为 MediaServer |
+| 浏览 | 无 | 实现 ContentDirectory 的 Browse action |
+| 电视端体验 | 电视无法主动发现 | 电视可在"媒体来源"中看到 PC |
+
+**实现要点**：
+
+```
+MediaServer
+  │
+  ├─ SSDP 广播 (urn:schemas-upnp-org:device:MediaServer:1)
+  │   └─ async_upnp_client.server 搭建 UPnP 设备宿主
+  │
+  ├─ ContentDirectory 服务
+  │   ├─ Browse action: 返回目录/文件的 DIDL-Lite XML
+  │   ├─ GetSearchCapabilities: 返回可搜索字段
+  │   ├─ GetSortCapabilities: 返回可排序字段
+  │   └─ GetSystemUpdateID: 内容变更标识
+  │
+  ├─ ConnectionManager 服务
+  │   └─ GetProtocolInfo: 返回支持的 MIME 类型列表
+  │
+  ├─ HTTP 文件服务 (复用 HTTPFileServer)
+  │   └─ Range 支持 + DLNA 头
+  │
+  └─ 媒体扫描引擎
+      ├─ 递归扫描指定目录
+      ├─ ffprobe 提取元数据
+      ├─ 构建内存中的虚拟目录树
+      └─ objectID 映射表（路径 ↔ 数字 ID）
+```
+
+**目录树模型**：
+
+```python
+@dataclass
+class MediaNode:
+    """虚拟目录树中的节点。"""
+    object_id: str
+    parent_id: str
+    title: str
+    is_container: bool
+    path: Path | None = None
+    media_info: MediaInfo | None = None
+    children: list["MediaNode"] = field(default_factory=list)
+```
+
+**Browse 请求处理流程**：
+
+```
+电视发送 SOAP Browse(ObjectID="0")
+  │
+  ├─ ObjectID=0 → 返回根容器 "LanCaster Media"
+  │
+  ├─ ObjectID=1 → 返回 dirs[0] 下的子目录和文件
+  │
+  └─ ObjectID=文件ID → 返回文件的 DIDL-Lite 元数据
+      包含: title, duration, resolution, codec, HTTP URL
+```
+
+### 4.8 DesktopMirror (`lancaster/mirror.py`) — Phase 3
+
+**职责**：将 PC 桌面画面实时串流到电视。
+
+**工作原理**：
+
+```
+FFmpeg 屏幕采集 ──pipe──> HTTPFileServer ──HTTP──> 电视
+     │                        │
+     │ -f gdigrab/dxgi        │ /stream/{id}
+     │ -vcodec libx264        │ Content-Type: video/mp2t
+     │ -preset ultrafast      │
+     │ -tune zerolatency      │
+     │ -f mpegts pipe:1       │
+```
+
+**API**：
+
+```python
+class DesktopMirror:
+    def __init__(
+        self,
+        http_server: HTTPFileServer,
+        controller: MediaController,
+    ):
+        ...
+
+    async def start(
+        self,
+        device: DLNADevice,
+        fps: int = 30,
+        quality: str = "medium",    # low/medium/high
+        audio: bool = True,         # 是否采集系统音频
+    ) -> None
+        """开始桌面镜像。"""
+
+    async def stop(self) -> None
+        """停止镜像，终止 FFmpeg 进程。"""
+
+    @property
+    def is_running(self) -> bool
+        """是否正在镜像中。"""
+```
+
+**质量预设**：
+
+| 预设 | 分辨率 | 码率 | 延迟 |
+|------|--------|------|------|
+| low | 原始/2 | 2 Mbps | ~1s |
+| medium | 原始 | 5 Mbps | ~2s |
+| high | 原始 | 10 Mbps | ~3s |
+
+**FFmpeg 命令模板**（Windows）：
+
+```bash
+ffmpeg -f gdigrab -framerate 30 -i desktop \
+  -vcodec libx264 -preset ultrafast -tune zerolatency \
+  -pix_fmt yuv420p -g 60 \
+  -b:v 5000k -maxrate 5000k -bufsize 10000k \
+  -f mpegts pipe:1
+```
+
+**限制说明**：
+- DLNA 协议不支持低延迟实时流，最低延迟约 1 秒
+- 不适合游戏、视频会议等低延迟场景
+- 适合演示文稿、图片浏览等容忍延迟的场景
+- 音频采集在 Windows 上需要额外配置（DirectShow 设备）
+
 ---
 
 ## 5. 数据模型
@@ -382,3 +697,405 @@ lancaster
 vlc --intf dummy --extraintf http --http-port 8080
 # 在 VLC 偏好设置 > 全部 > 流输出 > UPnP > 启用 UPnP Renderer
 ```
+
+---
+
+## 11. TDD 开发流程
+
+LanCaster 采用 TDD（Test-Driven Development）模式开发。每个模块遵循 Red-Green-Refactor 循环。
+
+### 11.1 TDD 三步循环
+
+```
+┌─────────────────────────────────────────────┐
+│                                             │
+│   1. RED: 写一个失败的测试                    │
+│      │                                      │
+│      ▼                                      │
+│   2. GREEN: 写最少的代码让测试通过            │
+│      │                                      │
+│      ▼                                      │
+│   3. REFACTOR: 重构代码，保持测试通过         │
+│      │                                      │
+│      └──────── 回到 1 ──────────────────────┘
+│
+```
+
+### 11.2 每个模块的 TDD 步骤
+
+以 Phase 2 的 `Transcoder` 为例：
+
+**Step 1: 先写测试文件 `tests/test_transcoder.py`**
+
+```python
+import pytest
+from lancaster.transcoder import Transcoder
+from lancaster.models import MediaInfo
+from lancaster.exceptions import TranscodeError
+
+class TestProbe:
+    @pytest.mark.asyncio
+    async def test_probe_returns_media_info(self, tmp_path):
+        # 创建一个最小的测试视频文件（用 FFmpeg 生成）
+        test_file = tmp_path / "test.mp4"
+        # ... 生成测试文件 ...
+        info = await Transcoder.probe(test_file)
+        assert isinstance(info, MediaInfo)
+        assert info.video_codec != ""
+
+    @pytest.mark.asyncio
+    async def test_probe_nonexistent_raises(self):
+        with pytest.raises(TranscodeError):
+            await Transcoder.probe("/nonexistent/file.mp4")
+
+class TestNeedsTranscode:
+    def test_h264_aac_mp4_no_transcode(self):
+        info = MediaInfo(
+            path="test.mp4",
+            video_codec="h264", audio_codec="aac", container="mp4"
+        )
+        assert not Transcoder.needs_transcode(info)
+
+    def test_hevc_needs_transcode(self):
+        info = MediaInfo(
+            path="test.mkv",
+            video_codec="hevc", audio_codec="aac", container="matroska"
+        )
+        assert Transcoder.needs_transcode(info)
+```
+
+**Step 2: 运行测试，确认全部失败（RED）**
+
+```bash
+pytest tests/test_transcoder.py -v
+# 预期: 全部 FAILED（模块尚未实现）
+```
+
+**Step 3: 实现 `lancaster/transcoder.py` 使测试通过（GREEN）**
+
+**Step 4: 重构代码，保持测试通过（REFACTOR）**
+
+**Step 5: 添加更多边界条件测试，重复循环**
+
+### 11.3 测试分层策略
+
+```
+┌──────────────────────────────────────────┐
+│  Level 3: 端到端测试 (E2E)               │
+│  - 需要真实设备或 VLC DMR                 │
+│  - 手动执行或 CI 中跳过                   │
+│  - 测试完整投屏流程                       │
+├──────────────────────────────────────────┤
+│  Level 2: 集成测试                        │
+│  - 启动真实 HTTP 服务器                   │
+│  - 测试 HTTP Range、DLNA 头              │
+│  - 测试 FFmpeg 子进程调用                 │
+├──────────────────────────────────────────┤
+│  Level 1: 单元测试                        │
+│  - Mock 所有外部依赖                      │
+│  - 测试数据模型、XML 构建、工具函数       │
+│  - 毫秒级执行                             │
+└──────────────────────────────────────────┘
+```
+
+### 11.4 测试覆盖率目标
+
+| 模块 | 目标覆盖率 | 测试类型 |
+|------|-----------|---------|
+| models.py | 100% | 单元 |
+| utils.py | 100% | 单元 |
+| didl.py | 95%+ | 单元 |
+| config.py | 95%+ | 单元 |
+| http_server.py | 90%+ | 集成（真实 HTTP） |
+| transcoder.py | 85%+ | 单元（Mock subprocess）+ 集成 |
+| discovery.py | 70%+ | 单元（Mock SSDP）|
+| controller.py | 70%+ | 单元（Mock DmrDevice）|
+| url_proxy.py | 85%+ | 单元 + 集成 |
+| server.py | 75%+ | 集成 |
+| mirror.py | 70%+ | 单元（Mock FFmpeg）|
+
+### 11.5 Mock 策略
+
+对于依赖网络设备的模块，测试中使用 Mock：
+
+```python
+# 示例: Mock DmrDevice 进行 Controller 单元测试
+from unittest.mock import AsyncMock, MagicMock, patch
+
+@pytest.fixture
+def mock_dmr():
+    dmr = MagicMock(spec=DmrDevice)
+    dmr.async_set_transport_uri = AsyncMock()
+    dmr.async_play = AsyncMock()
+    dmr.async_pause = AsyncMock()
+    dmr.async_stop = AsyncMock()
+    dmr.async_wait_for_can_play = AsyncMock()
+    return dmr
+
+async def test_play_url_calls_set_uri_and_play(mock_dmr, sample_renderer):
+    with patch.object(MediaController, '_get_dmr', return_value=mock_dmr):
+        ctrl = MediaController()
+        await ctrl.play_url(sample_renderer, "http://example.com/video.mp4")
+        mock_dmr.async_set_transport_uri.assert_called_once()
+        mock_dmr.async_play.assert_called_once()
+```
+
+---
+
+## 12. GUI 设计与选型
+
+### 12.1 GUI 需求分析
+
+LanCaster 的 GUI 需要支持以下交互：
+
+| 功能区域 | 需求 |
+|----------|------|
+| 设备管理 | 自动发现设备列表，显示在线/离线状态，选择默认设备 |
+| 文件选择 | 拖拽文件投屏、文件浏览器选择、最近投屏历史 |
+| 播放控制 | 播放/暂停/停止按钮、进度条拖拽、音量滑块 |
+| 状态显示 | 当前播放媒体信息、进度、设备状态 |
+| 媒体库 | 配置共享文件夹、启停 MediaServer |
+| 桌面镜像 | 一键开始/停止、帧率/质量选择 |
+| 系统托盘 | 最小化到托盘、快捷控制 |
+| 设置 | 默认设备、网卡选择、转码偏好 |
+
+### 12.2 GUI 框架对比
+
+#### 方案 A: PyQt6
+
+```
+优势:
+  + 与核心库同语言 (Python)，集成最简单
+  + 成熟稳定，15+ 年历史
+  + 原生 Windows 外观
+  + 丰富的控件库（表格、树、滑块、进度条）
+  + 系统托盘支持完善
+  + asyncio 集成: qasync 库
+
+劣势:
+  - 打包体积大 (~50MB with PyInstaller)
+  - 许可证限制 (GPL，商用需 Qt 商业许可)
+  - UI 设计较传统，不够"现代感"
+
+技术栈: Python + PyQt6 + qasync + PyInstaller
+打包大小: 50-80 MB
+```
+
+#### 方案 B: Tauri 2.0 + Web 前端
+
+```
+优势:
+  + 打包极小 (3-15 MB)
+  + UI 最现代化（React/Vue 前端生态）
+  + 跨平台（Windows/macOS/Linux/移动端）
+  + 安全的 Capability 权限模型
+  + 系统托盘、自动更新内置
+
+劣势:
+  - 需要 Rust 后端 + Python 核心库 IPC
+  - 架构复杂度高（Rust ↔ Python 跨进程通信）
+  - 各平台 WebView 渲染差异
+  - 开发者需掌握 Rust + Web + Python 三栈
+
+技术栈: Rust (Tauri) + React/Vue + Python (subprocess/socket)
+打包大小: 10-20 MB
+IPC 方案: Tauri sidecar 启动 Python 进程，通过 stdin/stdout JSON-RPC 通信
+```
+
+#### 方案 C: Web UI (aiohttp)
+
+```
+优势:
+  + 最简单，复用已有 aiohttp 服务器
+  + 无需额外依赖
+  + 可远程访问（手机当遥控器）
+  + 跨平台无障碍
+
+劣势:
+  - 非桌面原生体验
+  - 无系统托盘
+  - 需要手动打开浏览器
+  - 性能较桌面 GUI 差
+
+技术栈: aiohttp + Jinja2/HTMX + Alpine.js
+打包大小: 0 MB（额外）
+```
+
+#### 方案 D: Textual (TUI)
+
+```
+优势:
+  + 纯 Python，与核心库完美集成
+  + 零额外依赖（rich 生态）
+  + 终端中运行，极轻量
+  + SSH 远程可用
+
+劣势:
+  - 非图形化，学习曲线
+  - 不支持拖拽
+  - 普通用户不习惯
+
+技术栈: Python + Textual (rich 出品)
+打包大小: 0 MB（额外）
+```
+
+### 12.3 推荐方案与分阶段策略
+
+鉴于 LanCaster 的核心价值是"简单好用的投屏工具"，推荐分阶段递进：
+
+```
+Phase 4a: Web UI（最快落地，2-3 天）
+  ├─ 复用 aiohttp，添加 HTML 页面
+  ├─ 设备选择 + 文件上传 + 播放控制
+  ├─ 手机浏览器也能当遥控器
+  └─ 作为 MVP 验证 GUI 交互
+
+Phase 4b: PyQt6 桌面版（2-3 周）
+  ├─ 适合做正式产品
+  ├─ 系统托盘常驻
+  ├─ 拖拽投屏
+  └─ 如果 GPL 许可可接受
+
+Phase 4c: Tauri + React（备选，4-6 周）
+  ├─ 打包最小、UI 最美
+  ├─ 适合开源社区推广
+  └─ 如果团队有 Rust + Web 经验
+```
+
+### 12.4 Web UI 初步设计
+
+由于 Web UI 实现最快且可复用现有技术栈，这里给出初步设计：
+
+**页面布局**：
+
+```
+┌─────────────────────────────────────────────┐
+│  LanCaster                        [设置] ⚙  │
+├─────────────────────────────────────────────┤
+│                                             │
+│  设备列表                                    │
+│  ┌─────────────────────────────────────┐    │
+│  │ ● Living Room TV    Samsung  [选择] │    │
+│  │ ○ Bedroom TV        LG       [选择] │    │
+│  │ ○ Kitchen Speaker   Sonos    [选择] │    │
+│  └─────────────────────────────────────┘    │
+│                                             │
+│  投屏                                        │
+│  ┌─────────────────────────────────────┐    │
+│  │  [选择文件...]  或 [输入URL...]       │    │
+│  │                                     │    │
+│  │  ┌──────────────────────────┐       │    │
+│  │  │   拖拽文件到此处投屏      │       │    │
+│  │  └──────────────────────────┘       │    │
+│  └─────────────────────────────────────┘    │
+│                                             │
+│  播放控制                                    │
+│  ┌─────────────────────────────────────┐    │
+│  │  ◄◄  ▶/❚❚  ■   00:15:30 / 01:30:00 │    │
+│  │  ════════════●══════════════════     │    │
+│  │  🔊 ════════●══  50%                │    │
+│  └─────────────────────────────────────┘    │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+**Web UI 后端路由**（添加到 HTTPFileServer）：
+
+```python
+# 新增路由
+GET  /                       → 主页面 HTML
+GET  /api/devices            → JSON 设备列表
+POST /api/cast               → 投屏操作
+POST /api/control/{action}   → 播放控制
+GET  /api/status             → 当前播放状态 (SSE 或轮询)
+POST /api/upload             → 文件上传投屏
+```
+
+**前端技术选择**：
+- **HTMX + Alpine.js**：无构建步骤、无 node_modules，单个 HTML 文件即可
+- 适合嵌入 Python 项目，无前端工具链负担
+- 通过 SSE (Server-Sent Events) 实现设备状态实时更新
+
+### 12.5 PyQt6 桌面版设计
+
+**主窗口布局**：
+
+```python
+class MainWindow(QMainWindow):
+    """
+    ┌─────────────────────────────────────┐
+    │ 菜单栏: 文件 | 设备 | 帮助          │
+    ├─────────┬───────────────────────────┤
+    │ 设备列表 │  投屏区域                 │
+    │ (QList) │  ┌─────────────────────┐  │
+    │         │  │ 当前播放信息         │  │
+    │ ● TV1   │  │ 标题: video.mp4     │  │
+    │ ○ TV2   │  │ 时长: 01:30:00      │  │
+    │         │  └─────────────────────┘  │
+    │         │                           │
+    │         │  进度条 + 控制按钮         │
+    │         │  ◄◄ ▶ ■  00:15/01:30     │
+    │         │  音量: ═══●═══ 50%        │
+    ├─────────┴───────────────────────────┤
+    │ 状态栏: 已连接 Living Room TV       │
+    └─────────────────────────────────────┘
+    """
+```
+
+**核心类设计**：
+
+```python
+class DeviceListWidget(QWidget):
+    """设备列表面板，实时更新设备在线状态。"""
+    device_selected = Signal(DLNADevice)
+
+class PlaybackPanel(QWidget):
+    """播放控制面板，含进度条、音量、按钮。"""
+    # 使用 QTimer 每秒轮询播放状态
+    # 或使用 GENA 事件订阅实时更新
+
+class CastDropZone(QWidget):
+    """文件拖拽区域，支持拖拽文件直接投屏。"""
+    def dragEnterEvent(self, event): ...
+    def dropEvent(self, event): ...
+
+class SystemTrayIcon(QSystemTrayIcon):
+    """系统托盘图标，最小化时驻留。"""
+    # 右键菜单: 打开 | 暂停 | 停止 | 退出
+```
+
+**asyncio 与 Qt 事件循环集成**：
+
+```python
+# 使用 qasync 桥接 asyncio 和 Qt 事件循环
+import qasync
+
+app = QApplication(sys.argv)
+loop = qasync.QEventLoop(app)
+asyncio.set_event_loop(loop)
+
+with loop:
+    loop.run_until_complete(main())
+```
+
+---
+
+## 13. 部署与分发
+
+### 13.1 PyInstaller 打包
+
+```bash
+# 单文件 exe（含 Python 运行时）
+pyinstaller --onefile --name lancaster \
+  --add-data "lancaster_web/templates:templates" \
+  lancaster_cli/app.py
+```
+
+### 13.2 未来考虑
+
+| 分发方式 | 适用场景 |
+|----------|---------|
+| PyPI (`pip install lancaster`) | 开发者/高级用户 |
+| GitHub Releases (exe) | Windows 普通用户 |
+| Microsoft Store (MSIX) | 如果做 WinUI 3 版本 |
+| Docker | NAS/服务器用户 |
