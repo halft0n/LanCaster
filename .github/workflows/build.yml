@@ -46,11 +46,23 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller lancaster.spec
 
-      - name: Upload artifact
+      - name: Build Windows installer (NSIS)
+        if: runner.os == 'Windows'
+        run: makensis installer\lancaster.nsi
+
+      - name: Upload artifact (directory)
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: dist/LanCaster/
+          retention-days: 30
+
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: LanCaster-Setup
+          path: dist/LanCaster-Setup.exe
           retention-days: 30
 
   release:
@@ -68,11 +80,14 @@ jobs:
           cd artifacts
           for dir in */; do
             name="${dir%/}"
+            if [ "$name" = "LanCaster-Setup" ]; then continue; fi
             tar -czf "${name}.tar.gz" -C "$dir" .
           done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/LanCaster-Setup/LanCaster-Setup.exe
           generate_release_notes: true

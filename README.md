@@ -108,11 +108,17 @@ Native window with the full Web UI, plus:
 pip install pyinstaller
 pyinstaller lancaster.spec
 # Output: dist/LanCaster/
+
+# Windows installer (requires NSIS)
+makensis installer\lancaster.nsi
+# Output: dist/LanCaster-Setup.exe
 ```
 
 **Automated builds:** Push a `v*` tag to trigger the GitHub Actions build workflow.
-Artifacts for Windows / macOS / Linux are uploaded automatically and attached to
-the GitHub Release.
+Release includes:
+- `LanCaster-Setup.exe` — Windows installer (NSIS, with Start Menu + Desktop shortcuts)
+- `LanCaster-linux.tar.gz` — Linux portable
+- `LanCaster-macos.tar.gz` — macOS portable
 
 ## Project Structure
 
@@ -143,6 +149,8 @@ LanCaster/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
 ├── lancaster_desktop.py    # PyInstaller entry point
 ├── lancaster.spec          # PyInstaller build config
+├── installer/
+│   └── lancaster.nsi       # NSIS Windows installer script
 ├── .github/workflows/
 │   ├── ci.yml              # Test + lint CI
 │   └── build.yml           # Desktop app build + release
