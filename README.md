@@ -88,6 +88,23 @@ Open `http://<your-ip>:8200` in a browser. The Web UI provides:
 - **Dark/Light theme** — toggle with button or `T` key
 - **Mobile responsive** — works on phones and tablets
 
+### Desktop App Mode
+
+```bash
+pip install lancaster[desktop]
+lancaster desktop
+```
+
+Native window with the full Web UI, plus system tray icon and file drag-and-drop.
+
+**Build standalone executable:**
+
+```bash
+pip install pyinstaller
+pyinstaller lancaster.spec
+# Output: dist/LanCaster/
+```
+
 ## Project Structure
 
 ```
@@ -112,7 +129,7 @@ LanCaster/
 ├── lancaster_cli/          # CLI interface
 │   ├── app.py              # Click command group
 │   └── commands/           # discover, cast, probe, control, web, mirror, serve, desktop
-├── tests/                  # 135 unit tests
+├── tests/                  # 158 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
 └── pyproject.toml
