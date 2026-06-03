@@ -90,9 +90,16 @@ class DesktopApp:
             asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         self._loop = asyncio.new_event_loop()
         self._web_server = WebServer(host=self._host, port=self._port)
+        self._server_ready = threading.Event()
 
         async def _run():
-            await self._web_server.start()
+            try:
+                await self._web_server.start()
+            except Exception as exc:
+                _LOGGER.error("Server failed to start: %s", exc)
+                self._server_ready.set()
+                return
+            self._server_ready.set()
             try:
                 while True:
                     await asyncio.sleep(1)
@@ -152,10 +159,7 @@ class DesktopApp:
             sys.exit(1)
 
         self._start_server_in_thread()
-
-        import time
-
-        time.sleep(0.5)
+        self._server_ready.wait(timeout=10)
 
         url = f"http://127.0.0.1:{self._port}"
         bridge = self._expose_api()
