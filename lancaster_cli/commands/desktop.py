@@ -8,8 +8,10 @@ import click
 
 
 @click.command()
+@click.option("-H", "--host", default=None, help="Bind address (default: auto-detect).")
 @click.option("-p", "--port", default=8200, help="Web server port (default: 8200).")
-def desktop(port: int) -> None:
+@click.option("--debug", is_flag=True, help="Enable DevTools and verbose logging.")
+def desktop(host: str | None, port: int, debug: bool) -> None:
     """Launch LanCaster as a desktop application.
 
     Opens a native window with the full Web UI, plus system tray icon.
@@ -23,5 +25,5 @@ def desktop(port: int) -> None:
 
     from lancaster.desktop import DesktopApp
 
-    app = DesktopApp(port=port)
+    app = DesktopApp(host=host, port=port, debug=debug)
     app.run()

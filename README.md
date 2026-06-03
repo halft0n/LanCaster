@@ -92,10 +92,15 @@ Open `http://<your-ip>:8200` in a browser. The Web UI provides:
 
 ```bash
 pip install lancaster[desktop]
-lancaster desktop
+lancaster desktop                        # launch native window
+lancaster desktop --debug                # with DevTools
+lancaster desktop -H 192.168.1.50 -p 9000  # custom host/port
 ```
 
-Native window with the full Web UI, plus system tray icon and file drag-and-drop.
+Native window with the full Web UI, plus:
+- **System tray** — show/hide/quit menu (pystray)
+- **File drag-and-drop** — drop video + subtitle files onto the window to cast
+- **Debug mode** — `--debug` enables browser DevTools and text selection
 
 **Build standalone executable:**
 
@@ -104,6 +109,10 @@ pip install pyinstaller
 pyinstaller lancaster.spec
 # Output: dist/LanCaster/
 ```
+
+**Automated builds:** Push a `v*` tag to trigger the GitHub Actions build workflow.
+Artifacts for Windows / macOS / Linux are uploaded automatically and attached to
+the GitHub Release.
 
 ## Project Structure
 
@@ -132,6 +141,11 @@ LanCaster/
 ├── tests/                  # 158 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
+├── lancaster_desktop.py    # PyInstaller entry point
+├── lancaster.spec          # PyInstaller build config
+├── .github/workflows/
+│   ├── ci.yml              # Test + lint CI
+│   └── build.yml           # Desktop app build + release
 └── pyproject.toml
 ```
 
@@ -148,6 +162,9 @@ LanCaster/
 | CLI framework | `click` + `rich` |
 | Web frontend | Alpine.js (CDN, zero build step) |
 | Real-time | WebSocket (`aiohttp`) |
+| Desktop GUI | `pywebview` (native WebView wrapper) |
+| System tray | `pystray` + `Pillow` |
+| Packaging | PyInstaller |
 | Testing | `pytest` + `pytest-asyncio` + `pytest-aiohttp` |
 
 ## REST API

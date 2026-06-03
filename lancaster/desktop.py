@@ -59,9 +59,15 @@ def _create_tray_icon(
 class DesktopApp:
     """Wraps WebServer in a pywebview native window with system tray."""
 
-    def __init__(self, host: str | None = None, port: int = 8200) -> None:
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int = 8200,
+        debug: bool = False,
+    ) -> None:
         self._host = host
         self._port = port
+        self._debug = debug
         self._web_server = None
         self._window = None
         self._tray_icon = None
@@ -105,6 +111,11 @@ class DesktopApp:
             quit_cb=self._quit,
         )
 
+    def _on_closing(self) -> bool:
+        """Called when user tries to close the window. Returns False to cancel close."""
+        self._stop_server()
+        return True
+
     def _show_window(self) -> None:
         if self._window:
             self._window.show()
@@ -146,11 +157,13 @@ class DesktopApp:
             height=_DEFAULT_HEIGHT,
             min_size=(480, 400),
             js_api=bridge,
-            text_select=False,
+            text_select=self._debug,
+            confirm_close=not self._debug,
         )
         self._window.events.shown += self._on_shown
+        self._window.events.closing += self._on_closing
 
-        webview.start(debug=False)
+        webview.start(debug=self._debug)
 
         self._stop_server()
 
