@@ -45,7 +45,7 @@ class DeviceDiscovery:
         self._factory = UpnpFactory(self._requester, non_strict=True)
         self._source_ip = source_ip
         self._on_device_change = on_device_change
-        self._register_lock = asyncio.Lock()
+        self._register_lock: asyncio.Lock | None = None
 
     def _resolve_source(self) -> tuple[str, int] | None:
         """Return (ip, 0) for SsdpListener source binding."""
@@ -141,6 +141,8 @@ class DeviceDiscovery:
 
         udn = ssdp_device.udn
 
+        if self._register_lock is None:
+            self._register_lock = asyncio.Lock()
         async with self._register_lock:
             if udn in self._devices:
                 existing = self._devices[udn]

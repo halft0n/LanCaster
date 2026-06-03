@@ -74,7 +74,7 @@ class WebServer:
         self._queue: list[QueueItem] = []
         self._queue_index: int = -1
         self._queue_playing: bool = False
-        self._queue_lock = asyncio.Lock()
+        self._queue_lock: asyncio.Lock | None = None
         self._advancing: bool = False
         self._current_cast_target: str = ""
 
@@ -136,9 +136,16 @@ class WebServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, "0.0.0.0", self._port)
         await site.start()
-        await self._discovery.watch()
-        self._status_task = asyncio.create_task(self._status_broadcast_loop())
         _LOGGER.info("Web UI available at %s", self.base_url)
+        self._status_task = asyncio.create_task(self._status_broadcast_loop())
+        asyncio.get_running_loop().create_task(self._start_discovery())
+
+    async def _start_discovery(self) -> None:
+        """Start device watcher in background (non-blocking)."""
+        try:
+            await self._discovery.watch()
+        except Exception as exc:
+            _LOGGER.warning("Device watcher failed to start: %s", exc)
 
     async def stop(self) -> None:
         if self._status_task:
@@ -258,6 +265,8 @@ class WebServer:
         )
 
         if naturally_ended:
+            if self._queue_lock is None:
+                self._queue_lock = asyncio.Lock()
             async with self._queue_lock:
                 if self._advancing:
                     return
