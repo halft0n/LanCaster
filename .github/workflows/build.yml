@@ -93,7 +93,11 @@ jobs:
           for dir in */; do
             name="${dir%/}"
             [ "$name" = "LanCaster-Setup" ] && continue
-            tar -czf "${name}-${VERSION}.tar.gz" -C "$dir" .
+            if [ "$name" = "LanCaster-windows" ]; then
+              (cd "$dir" && zip -r "../${name}-${VERSION}.zip" .)
+            else
+              tar -czf "${name}-${VERSION}.tar.gz" -C "$dir" .
+            fi
           done
           if [ -f "LanCaster-Setup/LanCaster-Setup.exe" ]; then
             cp "LanCaster-Setup/LanCaster-Setup.exe" "LanCaster-Setup-${VERSION}.exe"
@@ -103,7 +107,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/LanCaster-windows-${{ steps.version.outputs.VERSION }}.tar.gz
+            artifacts/LanCaster-windows-${{ steps.version.outputs.VERSION }}.zip
             artifacts/LanCaster-linux-${{ steps.version.outputs.VERSION }}.tar.gz
             artifacts/LanCaster-macos-${{ steps.version.outputs.VERSION }}.tar.gz
             artifacts/LanCaster-Setup-${{ steps.version.outputs.VERSION }}.exe

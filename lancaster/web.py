@@ -9,11 +9,16 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
+from lancaster.config import (
+    get_playback_position,
+    save_playback_position,
+)
 from lancaster.controller import MediaController
 from lancaster.discovery import DeviceDiscovery
 from lancaster.http_server import HTTPFileServer
 from lancaster.media_server import MediaServer
 from lancaster.mirror import DesktopMirror
+from lancaster.models import PlaybackInfo
 from lancaster.url_proxy import URLProxy
 from lancaster.utils import format_duration, get_local_ip, list_local_ips, parse_duration
 
@@ -49,7 +54,10 @@ class WebServer:
         self._app = web.Application()
         self._runner: web.AppRunner | None = None
 
-        self._discovery = DeviceDiscovery(source_ip=self._host)
+        self._discovery = DeviceDiscovery(
+            source_ip=self._host,
+            on_device_change=self._on_device_change,
+        )
         self._http_server = HTTPFileServer(host=self._host, port=self._port + 1)
         self._controller = MediaController(http_server=self._http_server)
         self._url_proxy = URLProxy(
@@ -66,12 +74,18 @@ class WebServer:
         self._queue: list[QueueItem] = []
         self._queue_index: int = -1
         self._queue_playing: bool = False
+        self._queue_lock = asyncio.Lock()
+        self._advancing: bool = False
+        self._current_cast_target: str = ""
 
         self._settings = ServerSettings()
 
         self._ws_clients: set[web.WebSocketResponse] = set()
         self._status_task: asyncio.Task | None = None
         self._auto_scan_task: asyncio.Task | None = None
+        self._poll_error_count: int = 0
+        self._last_position_seconds: int = -1
+        self._stall_count: int = 0
 
         self._setup_routes()
 
@@ -104,11 +118,17 @@ class WebServer:
         r.add_post("/api/library/play", self._api_library_play)
         r.add_get("/api/interfaces", self._api_interfaces)
         r.add_post("/api/interfaces/select", self._api_select_interface)
+        r.add_post("/api/devices/add", self._api_add_device)
+        r.add_get("/api/resume", self._api_get_resume_position)
         r.add_post("/api/file-dialog", self._api_file_dialog)
 
     @property
     def base_url(self) -> str:
         return f"http://{self._host}:{self._port}"
+
+    def _on_device_change(self, device, online: bool) -> None:
+        """Called by discovery when a device comes/goes or location changes."""
+        self._controller.invalidate(device.udn)
 
     async def start(self) -> None:
         await self._http_server.start()
@@ -116,6 +136,7 @@ class WebServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, "0.0.0.0", self._port)
         await site.start()
+        await self._discovery.watch()
         self._status_task = asyncio.create_task(self._status_broadcast_loop())
         _LOGGER.info("Web UI available at %s", self.base_url)
 
@@ -197,29 +218,105 @@ class WebServer:
         """Periodically push status to all WebSocket clients."""
         while True:
             try:
-                await asyncio.sleep(self._settings.poll_interval)
+                backoff = self._settings.poll_interval * (
+                    2 ** min(self._poll_error_count, 3)
+                )
+                await asyncio.sleep(backoff)
                 if not self._ws_clients:
                     continue
                 device = self._get_selected_renderer()
                 if not device:
                     status = self._build_status_dict()
+                    self._poll_error_count = 0
                 else:
                     try:
                         info = await self._controller.get_position(device)
                         status = self._build_status_dict(info, device)
-                        if (
-                            self._queue_playing
-                            and info.state.value == "STOPPED"
-                            and self._queue_index < len(self._queue) - 1
-                        ):
-                            asyncio.create_task(self._play_next_in_queue())
+                        self._poll_error_count = 0
+                        self._save_progress_periodically(info)
+                        await self._check_queue_advance(info)
+                        await self._check_stall(info)
                     except Exception:
+                        self._poll_error_count += 1
                         status = self._build_status_dict(device=device)
                 await self._broadcast_ws({"type": "status", **status})
             except asyncio.CancelledError:
                 break
             except Exception:
                 await asyncio.sleep(2)
+
+    async def _check_queue_advance(self, info: PlaybackInfo) -> None:
+        """Check if current track ended and advance queue (guarded)."""
+        if not self._queue_playing or self._advancing:
+            return
+        if self._queue_index >= len(self._queue) - 1:
+            return
+
+        is_stopped = info.state.value in ("STOPPED", "NO_MEDIA_PRESENT")
+        pos_s = int(info.position.total_seconds())
+        dur_s = int(info.duration.total_seconds())
+        naturally_ended = is_stopped and (
+            dur_s > 0 and pos_s >= dur_s - 3
+            or info.state.value == "NO_MEDIA_PRESENT"
+        )
+
+        if naturally_ended:
+            async with self._queue_lock:
+                if self._advancing:
+                    return
+                self._advancing = True
+            try:
+                await self._play_next_in_queue()
+            finally:
+                self._advancing = False
+
+    async def _check_stall(self, info: PlaybackInfo) -> None:
+        """Detect playback stall (position not advancing while PLAYING)."""
+        pos_s = int(info.position.total_seconds())
+        if info.state.value == "PLAYING":
+            if pos_s == self._last_position_seconds and pos_s > 0:
+                self._stall_count += 1
+                if self._stall_count >= 5:
+                    _LOGGER.warning(
+                        "Playback stall detected at %ds, attempting recovery",
+                        pos_s,
+                    )
+                    device = self._get_selected_renderer()
+                    if device:
+                        try:
+                            from datetime import timedelta
+                            await self._controller.seek(
+                                device, timedelta(seconds=pos_s + 1)
+                            )
+                        except Exception as exc:
+                            _LOGGER.error("Stall recovery failed: %s", exc)
+                    self._stall_count = 0
+            else:
+                self._stall_count = 0
+        else:
+            self._stall_count = 0
+        self._last_position_seconds = pos_s
+
+    def _save_progress_periodically(self, info) -> None:
+        """Save playback progress every ~30s (checked each poll cycle)."""
+        pos_s = int(info.position.total_seconds())
+        dur_s = int(info.duration.total_seconds())
+        target = self._current_cast_target
+        if (
+            info.state.value == "PLAYING"
+            and dur_s > 0
+            and pos_s > 5
+            and target
+        ):
+            if not hasattr(self, "_last_progress_save"):
+                self._last_progress_save = 0
+            import time
+            now = time.time()
+            if now - self._last_progress_save >= 30:
+                self._last_progress_save = now
+                save_playback_position(
+                    target, pos_s, dur_s, target
+                )
 
     async def _ws_handler(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
@@ -289,9 +386,12 @@ class WebServer:
         target = data.get("target", "")
         device = self._get_selected_renderer()
         if not device:
-            return web.json_response({"error": "No renderer found"}, status=400)
+            return web.json_response(
+                {"error": "No renderer found"}, status=400
+            )
 
         try:
+            self._current_cast_target = target
             is_url = target.startswith(("http://", "https://"))
             if is_url:
                 mode = URLProxy.detect_mode(target)
@@ -305,12 +405,55 @@ class WebServer:
                     }
                 )
             else:
-                await self._controller.play_file(device, target)
+                transcoded = await self._try_transcode_cast(
+                    device, target
+                )
                 return web.json_response(
-                    {"ok": True, "device": device.name, "target": target},
+                    {
+                        "ok": True,
+                        "device": device.name,
+                        "target": target,
+                        "transcoded": transcoded,
+                    },
                 )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
+
+    async def _try_transcode_cast(
+        self, device, target: str
+    ) -> bool:
+        """Cast local file, auto-transcoding if needed. Returns True if transcoded."""
+        from lancaster.transcoder import Transcoder
+
+        filepath = Path(target)
+        if not filepath.exists():
+            from lancaster.exceptions import PlaybackError
+            raise PlaybackError(f"File not found: {target}")
+
+        try:
+            info = await Transcoder.probe(filepath)
+            if Transcoder.needs_transcode(info):
+                _LOGGER.info(
+                    "File needs transcoding: %s (v=%s a=%s c=%s)",
+                    filepath.name,
+                    info.video_codec,
+                    info.audio_codec,
+                    info.container,
+                )
+                transcoder = Transcoder()
+                stream = await transcoder.transcode_stream(filepath)
+                stream_url = self._http_server.serve_stream(stream)
+                await self._controller.play_url(
+                    device, stream_url, title=filepath.stem
+                )
+                return True
+        except Exception as exc:
+            _LOGGER.debug(
+                "Probe/transcode skipped for %s: %s", filepath, exc
+            )
+
+        await self._controller.play_file(device, target)
+        return False
 
     async def _api_control(self, request: web.Request) -> web.Response:
         action = request.match_info["action"]
@@ -500,21 +643,26 @@ class WebServer:
                 self._queue_index = to_idx
         return web.json_response({"ok": True})
 
+    async def _cast_queue_item(self, device, item: QueueItem) -> None:
+        """Cast a queue item using appropriate method (proxy for URLs)."""
+        self._current_cast_target = item.target
+        if item.is_url:
+            await self._url_proxy.auto_cast(
+                device, item.target, title=item.title
+            )
+        else:
+            await self._try_transcode_cast(device, item.target)
+
     async def _play_queue_item(self, index: int) -> web.Response:
         device = self._get_selected_renderer()
         if not device:
-            return web.json_response({"error": "No renderer found"}, status=400)
+            return web.json_response(
+                {"error": "No renderer found"}, status=400
+            )
 
         item = self._queue[index]
         try:
-            if item.is_url:
-                await self._controller.play_url(
-                    device,
-                    item.target,
-                    title=item.title,
-                )
-            else:
-                await self._controller.play_file(device, item.target)
+            await self._cast_queue_item(device, item)
             await self._broadcast_ws(
                 {
                     "type": "queue_playing",
@@ -523,11 +671,7 @@ class WebServer:
                 }
             )
             return web.json_response(
-                {
-                    "ok": True,
-                    "index": index,
-                    "title": item.title,
-                }
+                {"ok": True, "index": index, "title": item.title}
             )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
@@ -539,14 +683,7 @@ class WebServer:
             if device:
                 item = self._queue[self._queue_index]
                 try:
-                    if item.is_url:
-                        await self._controller.play_url(
-                            device,
-                            item.target,
-                            title=item.title,
-                        )
-                    else:
-                        await self._controller.play_file(device, item.target)
+                    await self._cast_queue_item(device, item)
                     await self._broadcast_ws(
                         {
                             "type": "queue_playing",
@@ -555,7 +692,12 @@ class WebServer:
                         }
                     )
                 except Exception as exc:
-                    _LOGGER.error("Failed to play next queue item: %s", exc)
+                    _LOGGER.error(
+                        "Failed to play next queue item: %s", exc
+                    )
+                    await self._broadcast_ws(
+                        {"type": "error", "message": str(exc)}
+                    )
         else:
             self._queue_playing = False
 
@@ -775,9 +917,47 @@ class WebServer:
         _LOGGER.info("SSDP source IP changed to %s", ip)
         return web.json_response({"ok": True, "ip": ip})
 
+    async def _api_get_resume_position(
+        self, request: web.Request
+    ) -> web.Response:
+        """Check if there's a saved position for a target."""
+        target = request.query.get("target", "")
+        if not target:
+            return web.json_response(
+                {"error": "Missing 'target'"}, status=400
+            )
+        progress = get_playback_position(target)
+        if progress:
+            return web.json_response({"ok": True, **progress})
+        return web.json_response({"ok": False})
+
+    async def _api_add_device(self, request: web.Request) -> web.Response:
+        """Manually add a device by IP or UPnP location URL."""
+        data = await request.json()
+        target = data.get("target", "").strip()
+        if not target:
+            return web.json_response(
+                {"error": "Missing 'target' (IP or location URL)"},
+                status=400,
+            )
+
+        if target.startswith("http"):
+            location = target
+        else:
+            location = f"http://{target}:49152/description.xml"
+
+        device = await self._discovery.add_device_by_location(location)
+        if not device:
+            return web.json_response(
+                {"error": f"Cannot connect to {target}"}, status=400
+            )
+        return web.json_response(
+            {"ok": True, "name": device.name, "udn": device.udn}
+        )
+
     async def _api_file_dialog(self, request: web.Request) -> web.Response:
         """Open a native file picker dialog on the server machine."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             filepath = await loop.run_in_executor(None, self._open_file_dialog)
         except Exception as exc:

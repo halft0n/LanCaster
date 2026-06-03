@@ -14,6 +14,8 @@ from lancaster.utils import get_local_ip, guess_mime_type
 
 _LOGGER = logging.getLogger(__name__)
 
+_CHUNK_SIZE = 256 * 1024
+
 
 class HTTPFileServer:
     """Serve local files and streams over HTTP for DLNA renderers to pull."""
@@ -26,9 +28,15 @@ class HTTPFileServer:
         self._files: dict[str, Path] = {}
         self._streams: dict[str, AsyncIterator[bytes]] = {}
         self._app.router.add_route("GET", "/file/{file_id}", self._handle_file)
-        self._app.router.add_route("HEAD", "/file/{file_id}", self._handle_file)
-        self._app.router.add_route("GET", "/stream/{stream_id}", self._handle_stream)
-        self._app.router.add_route("HEAD", "/stream/{stream_id}", self._handle_stream)
+        self._app.router.add_route(
+            "HEAD", "/file/{file_id}", self._handle_file
+        )
+        self._app.router.add_route(
+            "GET", "/stream/{stream_id}", self._handle_stream
+        )
+        self._app.router.add_route(
+            "HEAD", "/stream/{stream_id}", self._handle_stream
+        )
 
     @property
     def base_url(self) -> str:
@@ -67,8 +75,12 @@ class HTTPFileServer:
         self._streams[stream_id] = stream
         return f"{self.base_url}/stream/{stream_id}"
 
+    def remove_file(self, file_id: str) -> None:
+        """Unregister a served file."""
+        self._files.pop(file_id, None)
+
     async def _handle_file(self, request: web.Request) -> web.StreamResponse:
-        """Handle file requests with Range support."""
+        """Handle file requests with Range support (non-blocking reads)."""
         file_id = request.match_info["file_id"]
         filepath = self._files.get(file_id)
         if not filepath or not filepath.exists():
@@ -82,12 +94,31 @@ class HTTPFileServer:
         end = file_size - 1
 
         if range_header:
-            range_spec = range_header.replace("bytes=", "").strip()
-            parts = range_spec.split("-")
-            if parts[0]:
-                start = int(parts[0])
-            if parts[1]:
-                end = int(parts[1])
+            try:
+                range_spec = range_header.replace("bytes=", "").strip()
+                parts = range_spec.split("-")
+                if not parts[0] and len(parts) > 1 and parts[1]:
+                    suffix = int(parts[1])
+                    start = max(0, file_size - suffix)
+                    end = file_size - 1
+                else:
+                    if parts[0]:
+                        start = int(parts[0])
+                    if len(parts) > 1 and parts[1]:
+                        end = int(parts[1])
+            except (ValueError, IndexError):
+                raise web.HTTPRequestRangeNotSatisfiable(
+                    headers={
+                        "Content-Range": f"bytes */{file_size}"
+                    }
+                )
+
+            if start < 0 or start >= file_size or end < start:
+                raise web.HTTPRequestRangeNotSatisfiable(
+                    headers={
+                        "Content-Range": f"bytes */{file_size}"
+                    }
+                )
             end = min(end, file_size - 1)
 
         content_length = end - start + 1
@@ -97,13 +128,18 @@ class HTTPFileServer:
             "Content-Type": mime,
             "Content-Length": str(content_length),
             "Accept-Ranges": "bytes",
-            "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Connection": "keep-alive",
             "TransferMode.DLNA.ORG": "Streaming",
             "ContentFeatures.DLNA.ORG": (
-                "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                "DLNA.ORG_OP=01;"
+                "DLNA.ORG_FLAGS="
+                "01700000000000000000000000000000"
             ),
         }
+        if range_header:
+            headers["Content-Range"] = (
+                f"bytes {start}-{end}/{file_size}"
+            )
 
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)
@@ -111,22 +147,37 @@ class HTTPFileServer:
         if request.method == "HEAD":
             return response
 
-        chunk_size = 256 * 1024
-        with open(filepath, "rb") as f:
-            f.seek(start)
-            remaining = content_length
-            while remaining > 0:
-                read_size = min(chunk_size, remaining)
-                data = f.read(read_size)
-                if not data:
-                    break
-                try:
-                    await response.write(data)
-                except ConnectionResetError:
-                    break
-                remaining -= len(data)
+        loop = asyncio.get_running_loop()
+        remaining = content_length
+        read_start = start
+
+        while remaining > 0:
+            read_size = min(_CHUNK_SIZE, remaining)
+            data = await loop.run_in_executor(
+                None, self._read_chunk, filepath, read_start, read_size
+            )
+            if not data:
+                break
+            try:
+                await response.write(data)
+            except (
+                ConnectionResetError,
+                ConnectionAbortedError,
+                BrokenPipeError,
+                asyncio.CancelledError,
+            ):
+                break
+            remaining -= len(data)
+            read_start += len(data)
 
         return response
+
+    @staticmethod
+    def _read_chunk(filepath: Path, offset: int, size: int) -> bytes:
+        """Read a chunk from file (runs in thread pool)."""
+        with open(filepath, "rb") as f:
+            f.seek(offset)
+            return f.read(size)
 
     async def _handle_stream(self, request: web.Request) -> web.StreamResponse:
         """Handle live stream requests (transcoded / mirrored content)."""

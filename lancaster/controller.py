@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 from datetime import timedelta
 from pathlib import Path
+from typing import Callable, TypeVar
 
 from async_upnp_client.aiohttp import AiohttpRequester
 from async_upnp_client.client_factory import UpnpFactory
@@ -18,32 +21,107 @@ from lancaster.utils import guess_mime_type
 
 _LOGGER = logging.getLogger(__name__)
 
+_T = TypeVar("_T")
+
+_MAX_RETRIES = 2
+_DEFAULT_WAIT_FOR_PLAY = 15
+
+
+_RETRYABLE_ERRORS = (
+    DeviceConnectionError,
+    OSError,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+def _with_retry(func: Callable) -> Callable:
+    """Retry decorator that invalidates DMR cache on first failure then retries."""
+
+    @functools.wraps(func)
+    async def wrapper(self: "MediaController", device: DLNADevice, *args, **kwargs):
+        last_exc = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                return await func(self, device, *args, **kwargs)
+            except PlaybackError as exc:
+                if any(isinstance(exc.__cause__, t) for t in _RETRYABLE_ERRORS):
+                    last_exc = exc
+                else:
+                    raise
+            except _RETRYABLE_ERRORS as exc:
+                last_exc = exc
+            except Exception:
+                raise
+
+            if attempt < _MAX_RETRIES:
+                _LOGGER.warning(
+                    "Attempt %d failed for %s on %s: %s. Retrying...",
+                    attempt + 1,
+                    func.__name__,
+                    device.name,
+                    last_exc,
+                )
+                self.invalidate(device.udn)
+                await asyncio.sleep(0.5 * (attempt + 1))
+        raise last_exc
+
+    return wrapper
+
 
 class MediaController:
     """Control playback on a DLNA MediaRenderer device."""
 
-    def __init__(self, http_server: HTTPFileServer | None = None) -> None:
-        self._requester = AiohttpRequester(timeout=10)
+    def __init__(
+        self,
+        http_server: HTTPFileServer | None = None,
+        wait_for_play: float = _DEFAULT_WAIT_FOR_PLAY,
+    ) -> None:
+        self._requester = AiohttpRequester(timeout=15)
         self._factory = UpnpFactory(self._requester, non_strict=True)
         self._http_server = http_server
+        self._wait_for_play = wait_for_play
         self._dmr_cache: dict[str, DmrDevice] = {}
+        self._dmr_locks: dict[str, asyncio.Lock] = {}
+
+    def _get_lock(self, udn: str) -> asyncio.Lock:
+        """Get or create a per-UDN lock."""
+        if udn not in self._dmr_locks:
+            self._dmr_locks[udn] = asyncio.Lock()
+        return self._dmr_locks[udn]
+
+    def invalidate(self, udn: str) -> None:
+        """Remove a cached DMR entry, forcing reconnection on next use."""
+        if udn in self._dmr_cache:
+            _LOGGER.info("Invalidating DMR cache for %s", udn)
+            del self._dmr_cache[udn]
+
+    def invalidate_all(self) -> None:
+        """Clear the entire DMR cache."""
+        self._dmr_cache.clear()
+        _LOGGER.info("All DMR cache entries invalidated")
 
     async def _get_dmr(self, device: DLNADevice) -> DmrDevice:
-        """Get or create a DmrDevice for the given DLNA device."""
-        if device.udn in self._dmr_cache:
-            return self._dmr_cache[device.udn]
+        """Get or create a DmrDevice for the given DLNA device (thread-safe)."""
+        lock = self._get_lock(device.udn)
+        async with lock:
+            if device.udn in self._dmr_cache:
+                return self._dmr_cache[device.udn]
 
-        try:
-            upnp_device = await self._factory.async_create_device(device.location)
-        except Exception as exc:
-            raise DeviceConnectionError(
-                f"Cannot connect to {device.name} at {device.location}"
-            ) from exc
+            try:
+                upnp_device = await self._factory.async_create_device(
+                    device.location
+                )
+            except Exception as exc:
+                raise DeviceConnectionError(
+                    f"Cannot connect to {device.name} at {device.location}"
+                ) from exc
 
-        dmr = DmrDevice(upnp_device, event_handler=None)
-        self._dmr_cache[device.udn] = dmr
-        return dmr
+            dmr = DmrDevice(upnp_device, event_handler=None)
+            self._dmr_cache[device.udn] = dmr
+            return dmr
 
+    @_with_retry
     async def play_url(
         self,
         device: DLNADevice,
@@ -61,14 +139,21 @@ class MediaController:
         )
 
         try:
-            await dmr.async_set_transport_uri(url, media_title, meta_data=meta_data)
-            await dmr.async_wait_for_can_play(max_wait_time=5)
+            await dmr.async_set_transport_uri(
+                url, media_title, meta_data=meta_data
+            )
+            await dmr.async_wait_for_can_play(
+                max_wait_time=self._wait_for_play
+            )
             await dmr.async_play()
         except Exception as exc:
-            raise PlaybackError(f"Failed to play URL on {device.name}: {exc}") from exc
+            raise PlaybackError(
+                f"Failed to play URL on {device.name}: {exc}"
+            ) from exc
 
         _LOGGER.info("Playing %s on %s", url, device.name)
 
+    @_with_retry
     async def play_file(
         self,
         device: DLNADevice,
@@ -82,7 +167,9 @@ class MediaController:
             raise PlaybackError(f"File not found: {filepath}")
 
         if not self._http_server:
-            raise PlaybackError("HTTP server is required for local file casting")
+            raise PlaybackError(
+                "HTTP server is required for local file casting"
+            )
 
         file_url = self._http_server.serve_file(filepath)
         mime = guess_mime_type(filepath)
@@ -107,14 +194,21 @@ class MediaController:
 
         dmr = await self._get_dmr(device)
         try:
-            await dmr.async_set_transport_uri(file_url, media_title, meta_data=meta_data)
-            await dmr.async_wait_for_can_play(max_wait_time=5)
+            await dmr.async_set_transport_uri(
+                file_url, media_title, meta_data=meta_data
+            )
+            await dmr.async_wait_for_can_play(
+                max_wait_time=self._wait_for_play
+            )
             await dmr.async_play()
         except Exception as exc:
-            raise PlaybackError(f"Failed to play file on {device.name}: {exc}") from exc
+            raise PlaybackError(
+                f"Failed to play file on {device.name}: {exc}"
+            ) from exc
 
         _LOGGER.info("Playing %s on %s", filepath.name, device.name)
 
+    @_with_retry
     async def pause(self, device: DLNADevice) -> None:
         """Pause playback."""
         dmr = await self._get_dmr(device)
@@ -123,6 +217,7 @@ class MediaController:
         except Exception as exc:
             raise PlaybackError(f"Failed to pause: {exc}") from exc
 
+    @_with_retry
     async def resume(self, device: DLNADevice) -> None:
         """Resume playback."""
         dmr = await self._get_dmr(device)
@@ -131,6 +226,7 @@ class MediaController:
         except Exception as exc:
             raise PlaybackError(f"Failed to resume: {exc}") from exc
 
+    @_with_retry
     async def stop(self, device: DLNADevice) -> None:
         """Stop playback."""
         dmr = await self._get_dmr(device)
@@ -139,6 +235,7 @@ class MediaController:
         except Exception as exc:
             raise PlaybackError(f"Failed to stop: {exc}") from exc
 
+    @_with_retry
     async def seek(self, device: DLNADevice, position: timedelta) -> None:
         """Seek to a specific position."""
         dmr = await self._get_dmr(device)
@@ -147,60 +244,85 @@ class MediaController:
         except Exception as exc:
             raise PlaybackError(f"Failed to seek: {exc}") from exc
 
+    @_with_retry
     async def set_volume(self, device: DLNADevice, level: int) -> None:
         """Set volume (0-100)."""
         dmr = await self._get_dmr(device)
         try:
             action = dmr._action("RC", "SetVolume")
             if action:
-                await action.async_call(InstanceID=0, Channel="Master", DesiredVolume=level)
+                await action.async_call(
+                    InstanceID=0, Channel="Master", DesiredVolume=level
+                )
         except Exception as exc:
-            raise PlaybackError(f"Failed to set volume: {exc}") from exc
+            raise PlaybackError(
+                f"Failed to set volume: {exc}"
+            ) from exc
 
     async def get_volume(self, device: DLNADevice) -> int:
-        """Get current volume level."""
+        """Get current volume level. Raises on failure."""
         dmr = await self._get_dmr(device)
         try:
             action = dmr._action("RC", "GetVolume")
             if action:
-                result = await action.async_call(InstanceID=0, Channel="Master")
+                result = await action.async_call(
+                    InstanceID=0, Channel="Master"
+                )
                 return int(result.get("CurrentVolume", 0))
-        except Exception:
-            pass
+        except Exception as exc:
+            raise PlaybackError(
+                f"Failed to get volume: {exc}"
+            ) from exc
         return 0
 
     async def get_position(self, device: DLNADevice) -> PlaybackInfo:
-        """Get current playback position and state."""
+        """Get current playback position and state. Raises on failure."""
         dmr = await self._get_dmr(device)
 
         state = TransportState.STOPPED
         position = timedelta()
         duration = timedelta()
         title = ""
+        errors = []
 
         try:
             action = dmr._action("AVT", "GetTransportInfo")
             if action:
                 result = await action.async_call(InstanceID=0)
-                raw_state = result.get("CurrentTransportState", "STOPPED")
+                raw_state = result.get(
+                    "CurrentTransportState", "STOPPED"
+                )
                 try:
                     state = TransportState(raw_state)
                 except ValueError:
                     state = TransportState.STOPPED
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(str(exc))
 
         try:
             action = dmr._action("AVT", "GetPositionInfo")
             if action:
                 result = await action.async_call(InstanceID=0)
-                position = self._parse_time(result.get("RelTime", "0:00:00"))
-                duration = self._parse_time(result.get("TrackDuration", "0:00:00"))
+                position = self._parse_time(
+                    result.get("RelTime", "0:00:00")
+                )
+                duration = self._parse_time(
+                    result.get("TrackDuration", "0:00:00")
+                )
                 title = result.get("TrackURI", "")
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(str(exc))
 
-        volume = await self.get_volume(device)
+        try:
+            volume = await self.get_volume(device)
+        except PlaybackError:
+            volume = 0
+
+        if len(errors) == 2:
+            self.invalidate(device.udn)
+            raise PlaybackError(
+                f"Device unreachable: {'; '.join(errors)}"
+            )
 
         return PlaybackInfo(
             state=state,

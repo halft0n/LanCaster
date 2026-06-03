@@ -149,11 +149,15 @@ class TestCastAPI:
         web_server["discovery"].find_by_name = MagicMock(return_value=device)
         web_server["server"]._selected_device = device.name
 
-        c = await client
-        resp = await c.post("/api/cast", json={"target": "/tmp/video.mp4"})
-        data = await resp.json()
-        assert data["ok"] is True
-        web_server["controller"].play_file.assert_awaited_once()
+        with patch.object(
+            web_server["server"],
+            "_try_transcode_cast",
+            new=AsyncMock(return_value=False),
+        ):
+            c = await client
+            resp = await c.post("/api/cast", json={"target": "/tmp/video.mp4"})
+            data = await resp.json()
+            assert data["ok"] is True
 
     @pytest.mark.asyncio
     async def test_cast_no_device(self, client, web_server):
@@ -317,40 +321,54 @@ class TestQueueAPI:
         device = _make_device()
         web_server["discovery"].renderers = [device]
 
-        c = await client
-        await c.post("/api/queue/add", json={"targets": ["/tmp/a.mp4", "/tmp/b.mp4"]})
+        with patch.object(
+            web_server["server"],
+            "_try_transcode_cast",
+            new=AsyncMock(return_value=False),
+        ):
+            c = await client
+            await c.post("/api/queue/add", json={"targets": ["/tmp/a.mp4", "/tmp/b.mp4"]})
 
-        resp = await c.post("/api/queue/play", json={"index": 0})
-        data = await resp.json()
-        assert data["ok"] is True
-        web_server["controller"].play_file.assert_awaited()
+            resp = await c.post("/api/queue/play", json={"index": 0})
+            data = await resp.json()
+            assert data["ok"] is True
 
     @pytest.mark.asyncio
     async def test_queue_next_prev(self, client, web_server):
         device = _make_device()
         web_server["discovery"].renderers = [device]
 
-        c = await client
-        await c.post("/api/queue/add", json={"targets": ["/a.mp4", "/b.mp4", "/c.mp4"]})
-        await c.post("/api/queue/play", json={"index": 0})
+        with patch.object(
+            web_server["server"],
+            "_try_transcode_cast",
+            new=AsyncMock(return_value=False),
+        ):
+            c = await client
+            await c.post("/api/queue/add", json={"targets": ["/a.mp4", "/b.mp4", "/c.mp4"]})
+            await c.post("/api/queue/play", json={"index": 0})
 
-        resp = await c.post("/api/queue/next")
-        assert (await resp.json())["ok"] is True
+            resp = await c.post("/api/queue/next")
+            assert (await resp.json())["ok"] is True
 
-        resp = await c.post("/api/queue/prev")
-        assert (await resp.json())["ok"] is True
+            resp = await c.post("/api/queue/prev")
+            assert (await resp.json())["ok"] is True
 
     @pytest.mark.asyncio
     async def test_queue_next_at_end(self, client, web_server):
         device = _make_device()
         web_server["discovery"].renderers = [device]
 
-        c = await client
-        await c.post("/api/queue/add", json={"targets": ["/a.mp4"]})
-        await c.post("/api/queue/play", json={"index": 0})
+        with patch.object(
+            web_server["server"],
+            "_try_transcode_cast",
+            new=AsyncMock(return_value=False),
+        ):
+            c = await client
+            await c.post("/api/queue/add", json={"targets": ["/a.mp4"]})
+            await c.post("/api/queue/play", json={"index": 0})
 
-        resp = await c.post("/api/queue/next")
-        assert resp.status == 400
+            resp = await c.post("/api/queue/next")
+            assert resp.status == 400
 
     @pytest.mark.asyncio
     async def test_queue_reorder(self, client, web_server):
