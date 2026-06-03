@@ -12,6 +12,8 @@ from aiohttp import WSMsgType, web
 from lancaster.controller import MediaController
 from lancaster.discovery import DeviceDiscovery
 from lancaster.http_server import HTTPFileServer
+from lancaster.media_server import MediaServer
+from lancaster.mirror import DesktopMirror
 from lancaster.url_proxy import URLProxy
 from lancaster.utils import format_duration, get_local_ip, parse_duration
 
@@ -53,6 +55,10 @@ class WebServer:
         self._url_proxy = URLProxy(
             http_server=self._http_server, controller=self._controller,
         )
+        self._mirror = DesktopMirror(
+            http_server=self._http_server, controller=self._controller,
+        )
+        self._media_server: MediaServer | None = None
         self._selected_device: str | None = None
 
         self._queue: list[QueueItem] = []
@@ -88,6 +94,12 @@ class WebServer:
         r.add_post("/api/subtitle", self._api_subtitle_upload)
         r.add_get("/api/settings", self._api_settings_get)
         r.add_post("/api/settings", self._api_settings_set)
+        r.add_post("/api/mirror/start", self._api_mirror_start)
+        r.add_post("/api/mirror/stop", self._api_mirror_stop)
+        r.add_get("/api/mirror/status", self._api_mirror_status)
+        r.add_post("/api/library/scan", self._api_library_scan)
+        r.add_get("/api/library/browse", self._api_library_browse)
+        r.add_post("/api/library/play", self._api_library_play)
 
     @property
     def base_url(self) -> str:
@@ -565,3 +577,101 @@ class WebServer:
                 break
             except Exception:
                 await asyncio.sleep(5)
+
+    # --- Mirror APIs ---
+
+    async def _api_mirror_start(self, request: web.Request) -> web.Response:
+        device = self._get_selected_renderer()
+        if not device:
+            return web.json_response({"error": "No renderer found"}, status=400)
+
+        data = await request.json()
+        fps = int(data.get("fps", 30))
+        quality = data.get("quality", "medium")
+        audio = bool(data.get("audio", False))
+
+        try:
+            await self._mirror.start(device, fps=fps, quality=quality, audio=audio)
+            return web.json_response({
+                "ok": True, "device": device.name,
+                "fps": fps, "quality": quality, "audio": audio,
+            })
+        except RuntimeError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
+    async def _api_mirror_stop(self, request: web.Request) -> web.Response:
+        await self._mirror.stop()
+        return web.json_response({"ok": True})
+
+    async def _api_mirror_status(self, request: web.Request) -> web.Response:
+        return web.json_response({"running": self._mirror.is_running})
+
+    # --- Media Library APIs ---
+
+    async def _api_library_scan(self, request: web.Request) -> web.Response:
+        data = await request.json()
+        dirs_raw = data.get("directories", [])
+        if isinstance(dirs_raw, str):
+            dirs_raw = [dirs_raw]
+        if not dirs_raw:
+            return web.json_response(
+                {"error": "No directories specified"}, status=400,
+            )
+
+        from pathlib import Path as _Path
+        dirs = [_Path(d) for d in dirs_raw if _Path(d).is_dir()]
+        if not dirs:
+            return web.json_response(
+                {"error": "No valid directories found"}, status=400,
+            )
+
+        self._media_server = MediaServer(
+            directories=dirs, host=self._host, port=self._port + 2,
+        )
+        self._media_server.scan()
+        total = len([n for n in self._media_server.get_all_items() if not n.is_container])
+        return web.json_response({
+            "ok": True, "total_items": total,
+            "directories": [str(d) for d in dirs],
+        })
+
+    async def _api_library_browse(self, request: web.Request) -> web.Response:
+        if not self._media_server:
+            return web.json_response({"error": "No library scanned"}, status=400)
+
+        object_id = request.query.get("id", "0")
+        nodes = self._media_server.browse(object_id)
+        result = []
+        for n in nodes:
+            item = {
+                "id": n.object_id,
+                "title": n.title,
+                "is_container": n.is_container,
+                "parent_id": n.parent_id,
+            }
+            if not n.is_container:
+                item["mime_type"] = n.mime_type
+                item["path"] = str(n.path) if n.path else None
+            result.append(item)
+        return web.json_response({"items": result, "parent_id": object_id})
+
+    async def _api_library_play(self, request: web.Request) -> web.Response:
+        if not self._media_server:
+            return web.json_response({"error": "No library scanned"}, status=400)
+        device = self._get_selected_renderer()
+        if not device:
+            return web.json_response({"error": "No renderer found"}, status=400)
+
+        data = await request.json()
+        object_id = data.get("id", "")
+        node = self._media_server.find_by_id(object_id)
+        if not node or node.is_container:
+            return web.json_response({"error": "Invalid media item"}, status=400)
+
+        try:
+            await self._controller.play_file(device, node.path)
+            return web.json_response({
+                "ok": True, "title": node.title, "device": device.name,
+            })
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)

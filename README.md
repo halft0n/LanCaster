@@ -11,8 +11,8 @@ A full-featured DLNA video casting tool — cast local videos, online URLs, or e
 - **Auto transcoding** — probe media format, auto-transcode incompatible codecs via FFmpeg
 - **Web UI** — browser-based control panel with WebSocket real-time updates
 - **Playlist queue** — add multiple items, auto-advance, reorder
-- **Media library sharing** — expose folders as a DLNA Media Server *(planned)*
-- **Desktop mirroring** — stream your desktop to the TV in real time *(planned)*
+- **Media library sharing** — expose folders as a DLNA Media Server, TV can browse and play
+- **Desktop mirroring** — stream your desktop to the TV in real time via FFmpeg
 
 ## Quick Start
 
@@ -42,6 +42,15 @@ lancaster cast "http://example.com/v.mp4" --force-proxy  # force proxy
 
 # Probe a file without casting
 lancaster probe movie.mkv
+
+# Mirror desktop to the TV
+lancaster mirror                           # default: medium quality, 30fps
+lancaster mirror --quality high --fps 60   # high quality
+lancaster mirror --audio                   # include system audio
+
+# Share a media library (TV browses and plays)
+lancaster serve ~/Movies ~/Music
+lancaster serve /mnt/media -p 9000
 
 # Playback control
 lancaster pause
@@ -86,6 +95,8 @@ LanCaster/
 │   ├── url_proxy.py        # URL routing (direct / proxied / transcode)
 │   ├── http_server.py      # Local file HTTP server with Range support
 │   ├── didl.py             # DIDL-Lite XML builder
+│   ├── mirror.py           # Desktop mirroring (FFmpeg screen capture)
+│   ├── media_server.py     # DLNA Media Server (DMS)
 │   ├── web.py              # Web UI server + REST API + WebSocket
 │   ├── templates/
 │   │   └── index.html      # Single-file frontend (Alpine.js)
@@ -94,8 +105,8 @@ LanCaster/
 │   └── exceptions.py       # Custom exceptions
 ├── lancaster_cli/          # CLI interface
 │   ├── app.py              # Click command group
-│   └── commands/           # discover, cast, probe, control, web
-├── tests/                  # 91 unit tests
+│   └── commands/           # discover, cast, probe, control, web, mirror, serve
+├── tests/                  # 119 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
 └── pyproject.toml
@@ -131,6 +142,12 @@ When the Web UI is running (`lancaster web`), these endpoints are available:
 | `/api/queue/*` | GET/POST | Playlist queue management |
 | `/api/subtitle` | POST | Upload subtitle file |
 | `/api/settings` | GET/POST | Server settings |
+| `/api/mirror/start` | POST | Start desktop mirroring |
+| `/api/mirror/stop` | POST | Stop desktop mirroring |
+| `/api/mirror/status` | GET | Mirror running state |
+| `/api/library/scan` | POST | Scan directories for media |
+| `/api/library/browse` | GET | Browse media library tree |
+| `/api/library/play` | POST | Play a library item on TV |
 | `/ws` | WebSocket | Real-time status push |
 
 ## Requirements
@@ -144,7 +161,7 @@ When the Web UI is running (`lancaster web`), these endpoints are available:
 - [x] Phase 1: MVP CLI (discover, cast, control)
 - [x] Web UI (browser-based control panel with WebSocket + queue)
 - [x] Phase 2: FFmpeg transcoder + URL proxy
-- [ ] Phase 3: Media library sharing (DMS) + desktop mirroring
+- [x] Phase 3: Media library sharing (DMS) + desktop mirroring
 - [ ] Phase 4: Native GUI (PyQt6 or Tauri)
 
 ## License
