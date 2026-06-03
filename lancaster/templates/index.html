@@ -581,7 +581,8 @@ select {
     <!-- File -->
     <div x-show="castTab==='file'">
       <div class="input-group">
-        <input type="text" x-model="castPath" placeholder="C:\Videos\movie.mp4 或 /home/user/movie.mp4" @keyup.enter="castTarget()">
+        <input type="text" x-model="castPath" placeholder="C:\Videos\movie.mp4 或 /home/user/movie.mp4（支持中文路径）" @keyup.enter="castTarget()" @click="openFilePicker()">
+        <button class="btn" @click="openFilePicker()" title="浏览文件">📂</button>
         <button class="btn btn-primary" @click="castTarget()" :disabled="!castPath||casting">
           <template x-if="casting"><span class="spinner"></span></template> 投屏
         </button>
@@ -1063,6 +1064,24 @@ function lancaster() {
         this.toast(`SSDP 绑定: ${this.ssdpSourceIp}`, 'success');
         this.scanDevices();
       } catch { this.toast('切换网卡失败', 'error'); }
+    },
+
+    /* File picker */
+    async openFilePicker() {
+      try {
+        if (this.isDesktop && window.pywebview && window.pywebview.api) {
+          const result = await window.pywebview.api.open_file_dialog();
+          if (result && result.ok && result.path) {
+            this.castPath = result.path;
+          }
+        } else {
+          const r = await fetch('/api/file-dialog', { method: 'POST' });
+          const d = await r.json();
+          if (d.ok && d.path) {
+            this.castPath = d.path;
+          }
+        }
+      } catch (e) { this.toast('打开文件选择器失败: ' + e.message, 'error'); }
     },
 
     /* Cast */

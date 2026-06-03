@@ -235,6 +235,25 @@ class _DesktopBridge:
             "subtitle": subtitle_file,
         }
 
+    def open_file_dialog(self) -> dict:
+        """Open a native file picker dialog via pywebview."""
+        if not self._app._window:
+            return {"ok": False, "error": "Window not available"}
+
+        file_types = (
+            "视频文件 (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v;*.mpg;*.mpeg;*.3gp;*.ogv)",
+            "音频文件 (*.mp3;*.flac;*.wav;*.aac;*.ogg;*.wma;*.m4a)",
+            "所有文件 (*.*)",
+        )
+        result = self._app._window.create_file_dialog(
+            dialog_type=10,  # OPEN_DIALOG
+            allow_multiple=False,
+            file_types=file_types,
+        )
+        if result and len(result) > 0:
+            return {"ok": True, "path": result[0]}
+        return {"ok": False, "path": None}
+
     def get_platform(self) -> str:
         return sys.platform
 

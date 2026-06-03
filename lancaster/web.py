@@ -104,6 +104,7 @@ class WebServer:
         r.add_post("/api/library/play", self._api_library_play)
         r.add_get("/api/interfaces", self._api_interfaces)
         r.add_post("/api/interfaces/select", self._api_select_interface)
+        r.add_post("/api/file-dialog", self._api_file_dialog)
 
     @property
     def base_url(self) -> str:
@@ -773,3 +774,36 @@ class WebServer:
         self._discovery._source_ip = ip
         _LOGGER.info("SSDP source IP changed to %s", ip)
         return web.json_response({"ok": True, "ip": ip})
+
+    async def _api_file_dialog(self, request: web.Request) -> web.Response:
+        """Open a native file picker dialog on the server machine."""
+        loop = asyncio.get_event_loop()
+        try:
+            filepath = await loop.run_in_executor(None, self._open_file_dialog)
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=500)
+
+        if not filepath:
+            return web.json_response({"ok": False, "path": None})
+        return web.json_response({"ok": True, "path": filepath})
+
+    @staticmethod
+    def _open_file_dialog() -> str | None:
+        """Run tkinter file dialog in a thread (blocking)."""
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+
+        filepath = filedialog.askopenfilename(
+            title="选择视频文件",
+            filetypes=[
+                ("视频文件", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.ts *.m4v *.mpg *.mpeg *.3gp *.ogv"),
+                ("音频文件", "*.mp3 *.flac *.wav *.aac *.ogg *.wma *.m4a"),
+                ("所有文件", "*.*"),
+            ],
+        )
+        root.destroy()
+        return filepath if filepath else None
