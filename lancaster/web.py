@@ -15,7 +15,7 @@ from lancaster.http_server import HTTPFileServer
 from lancaster.media_server import MediaServer
 from lancaster.mirror import DesktopMirror
 from lancaster.url_proxy import URLProxy
-from lancaster.utils import format_duration, get_local_ip, parse_duration
+from lancaster.utils import format_duration, get_local_ip, list_local_ips, parse_duration
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class WebServer:
         self._app = web.Application()
         self._runner: web.AppRunner | None = None
 
-        self._discovery = DeviceDiscovery()
+        self._discovery = DeviceDiscovery(source_ip=self._host)
         self._http_server = HTTPFileServer(host=self._host, port=self._port + 1)
         self._controller = MediaController(http_server=self._http_server)
         self._url_proxy = URLProxy(
@@ -102,6 +102,8 @@ class WebServer:
         r.add_post("/api/library/scan", self._api_library_scan)
         r.add_get("/api/library/browse", self._api_library_browse)
         r.add_post("/api/library/play", self._api_library_play)
+        r.add_get("/api/interfaces", self._api_interfaces)
+        r.add_post("/api/interfaces/select", self._api_select_interface)
 
     @property
     def base_url(self) -> str:
@@ -750,3 +752,24 @@ class WebServer:
             )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
+
+    async def _api_interfaces(self, request: web.Request) -> web.Response:
+        default_ip = get_local_ip()
+        ips = list_local_ips()
+        current = self._discovery._source_ip or default_ip
+        return web.json_response(
+            {
+                "interfaces": ips,
+                "current": current,
+                "default": default_ip,
+            }
+        )
+
+    async def _api_select_interface(self, request: web.Request) -> web.Response:
+        data = await request.json()
+        ip = data.get("ip", "")
+        if not ip:
+            return web.json_response({"error": "Missing 'ip'"}, status=400)
+        self._discovery._source_ip = ip
+        _LOGGER.info("SSDP source IP changed to %s", ip)
+        return web.json_response({"ok": True, "ip": ip})

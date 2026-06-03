@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from typing import Callable, Coroutine
 from urllib.parse import urlparse
 
@@ -12,6 +13,7 @@ from async_upnp_client.client_factory import UpnpFactory
 from async_upnp_client.ssdp_listener import SsdpDevice, SsdpListener, SsdpSource
 
 from lancaster.models import DeviceType, DLNADevice
+from lancaster.utils import get_local_ip
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,11 +34,29 @@ _SERVER_TYPES = {
 class DeviceDiscovery:
     """Discover DLNA devices on the local network."""
 
-    def __init__(self) -> None:
+    def __init__(self, source_ip: str | None = None) -> None:
         self._devices: dict[str, DLNADevice] = {}
         self._listener: SsdpListener | None = None
         self._requester = AiohttpRequester(timeout=10)
         self._factory = UpnpFactory(self._requester, non_strict=True)
+        self._source_ip = source_ip
+
+    def _resolve_source(self) -> tuple[str, int] | None:
+        """Return (ip, 0) for SsdpListener source binding.
+
+        On Windows, binding to 0.0.0.0 often fails to send multicast out
+        the correct NIC when multiple adapters are present (VPN, Hyper-V,
+        WSL, Docker).  Explicitly binding to the detected LAN IP fixes this.
+        """
+        ip = self._source_ip or get_local_ip()
+        if ip and ip != "127.0.0.1":
+            _LOGGER.debug("SSDP source bound to %s", ip)
+            return (ip, 0)
+        if sys.platform == "win32":
+            _LOGGER.warning(
+                "Could not detect LAN IP; SSDP may fail on Windows. Pass --source-ip explicitly."
+            )
+        return None
 
     async def scan(self, timeout: float = 5.0) -> list[DLNADevice]:
         """Scan for devices and return after timeout seconds."""
@@ -49,7 +69,10 @@ class DeviceDiscovery:
         ) -> None:
             await self._register_device(ssdp_device, dst)
 
-        listener = SsdpListener(async_callback=_on_device)
+        listener = SsdpListener(
+            async_callback=_on_device,
+            source=self._resolve_source(),
+        )
         await listener.async_start()
         await listener.async_search()
 
@@ -82,7 +105,10 @@ class DeviceDiscovery:
             if device and callback:
                 await callback(device, True)
 
-        self._listener = SsdpListener(async_callback=_on_device)
+        self._listener = SsdpListener(
+            async_callback=_on_device,
+            source=self._resolve_source(),
+        )
         await self._listener.async_start()
         await self._listener.async_search()
         return self._listener

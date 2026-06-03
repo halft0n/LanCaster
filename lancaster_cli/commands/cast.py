@@ -26,12 +26,14 @@ from lancaster.url_proxy import URLProxy
 @click.option("-t", "--timeout", default=5.0, help="Device scan timeout.")
 @click.option("--no-transcode", is_flag=True, help="Skip auto-transcode check.")
 @click.option("--force-proxy", is_flag=True, help="Force proxied mode for URLs.")
+@click.option("--source-ip", default=None, help="Local IP for SSDP binding.")
 def cast(
     target: str,
     device: str | None,
     timeout: float,
     no_transcode: bool,
     force_proxy: bool,
+    source_ip: str | None,
 ) -> None:
     """Cast a local file or URL to a DLNA device.
 
@@ -41,7 +43,7 @@ def cast(
     """
     console = Console()
     try:
-        asyncio.run(_cast(target, device, timeout, no_transcode, force_proxy, console))
+        asyncio.run(_cast(target, device, timeout, no_transcode, force_proxy, source_ip, console))
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
     except LanCasterError as exc:
@@ -55,12 +57,13 @@ async def _cast(
     timeout: float,
     no_transcode: bool,
     force_proxy: bool,
+    source_ip: str | None,
     console: Console,
 ) -> None:
     device_name = device_name or get_default_device()
 
     console.print(f"[bold]Scanning for devices ({timeout}s)...[/bold]")
-    disc = DeviceDiscovery()
+    disc = DeviceDiscovery(source_ip=source_ip)
     devices = await disc.scan(timeout=timeout)
 
     renderers = [d for d in devices if d.device_type == DeviceType.RENDERER]

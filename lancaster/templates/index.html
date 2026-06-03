@@ -475,6 +475,18 @@ select {
       <input type="number" style="width:70px" min="0" max="100" step="5"
              x-model.number="settings.default_volume" @change="saveSettings()">
     </div>
+    <div class="setting-row">
+      <div class="setting-label">
+        网卡 / 网络接口
+        <div class="setting-desc">SSDP 发现使用的网络接口（多网卡时需选择正确的 LAN 口）</div>
+      </div>
+      <select style="min-width:150px;padding:5px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px"
+              x-model="ssdpSourceIp" @change="selectInterface()">
+        <template x-for="iface in interfaces" :key="iface.ip">
+          <option :value="iface.ip" x-text="iface.label" :selected="iface.ip===ssdpSourceIp"></option>
+        </template>
+      </select>
+    </div>
     <div style="text-align:right;margin-top:14px">
       <button class="btn btn-sm" @click="showSettings=false">关闭</button>
     </div>
@@ -806,6 +818,7 @@ function lancaster() {
     libraryItems: [], libraryBreadcrumb: [], libraryCurrentId: '0',
     isDesktop: !!(window.pywebview && window.pywebview.api),
     bodyDragover: false,
+    interfaces: [], ssdpSourceIp: '',
     status: {
       device: null, state: 'NO_DEVICE', title: '',
       position: '00:00:00', duration: '00:00:00',
@@ -824,6 +837,7 @@ function lancaster() {
       this.loadSettings();
       this.loadQueue();
       this.checkMirrorStatus();
+      this.loadInterfaces();
       this._setupDesktopDrop();
     },
 
@@ -1027,6 +1041,28 @@ function lancaster() {
         this.devices.forEach(d => d.selected = d.name === name);
         this.toast(`已选择: ${name}`, 'success');
       } catch { this.toast('选择失败', 'error'); }
+    },
+
+    /* Network Interfaces */
+    async loadInterfaces() {
+      try {
+        const r = await fetch('/api/interfaces');
+        const d = await r.json();
+        this.interfaces = d.interfaces.map(ip => ({
+          ip, label: ip + (ip === d.default ? ' (自动检测)' : ''),
+        }));
+        this.ssdpSourceIp = d.current;
+      } catch {}
+    },
+    async selectInterface() {
+      try {
+        await fetch('/api/interfaces/select', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip: this.ssdpSourceIp }),
+        });
+        this.toast(`SSDP 绑定: ${this.ssdpSourceIp}`, 'success');
+        this.scanDevices();
+      } catch { this.toast('切换网卡失败', 'error'); }
     },
 
     /* Cast */

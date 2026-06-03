@@ -29,12 +29,14 @@ from lancaster.models import DeviceType
     help="Quality preset.",
 )
 @click.option("--audio", is_flag=True, help="Capture system audio (experimental).")
+@click.option("--source-ip", default=None, help="Local IP for SSDP binding.")
 def mirror(
     device: str | None,
     timeout: float,
     fps: int,
     quality: str,
     audio: bool,
+    source_ip: str | None,
 ) -> None:
     """Mirror your desktop to a DLNA device.
 
@@ -42,7 +44,7 @@ def mirror(
     """
     console = Console()
     try:
-        asyncio.run(_mirror(device, timeout, fps, quality, audio, console))
+        asyncio.run(_mirror(device, timeout, fps, quality, audio, source_ip, console))
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
     except LanCasterError as exc:
@@ -56,12 +58,13 @@ async def _mirror(
     fps: int,
     quality: str,
     audio: bool,
+    source_ip: str | None,
     console: Console,
 ) -> None:
     device_name = device_name or get_default_device()
 
     console.print(f"[bold]Scanning for devices ({timeout}s)...[/bold]")
-    disc = DeviceDiscovery()
+    disc = DeviceDiscovery(source_ip=source_ip)
     devices = await disc.scan(timeout=timeout)
 
     renderers = [d for d in devices if d.device_type == DeviceType.RENDERER]

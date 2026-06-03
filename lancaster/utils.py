@@ -21,6 +21,30 @@ def get_local_ip(target_ip: str = "8.8.8.8") -> str:
             return "127.0.0.1"
 
 
+def list_local_ips() -> list[str]:
+    """Return all non-loopback IPv4 addresses on this host.
+
+    The auto-detected default IP (via get_local_ip) is placed first.
+    """
+    ips: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                ips.append(ip)
+    except socket.gaierror:
+        pass
+
+    default_ip = get_local_ip()
+    if default_ip != "127.0.0.1" and default_ip not in ips:
+        ips.insert(0, default_ip)
+
+    seen: dict[str, None] = {}
+    for ip in ips:
+        seen.setdefault(ip, None)
+    return list(seen)
+
+
 def guess_mime_type(filepath: str | Path) -> str:
     """Guess MIME type from file extension."""
     ext_map = {

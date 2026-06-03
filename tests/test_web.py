@@ -46,6 +46,7 @@ def web_server():
         mock_disc_inst.renderers = []
         mock_disc_inst.stop_watch = AsyncMock()
         mock_disc_inst.find_by_name = MagicMock(return_value=None)
+        mock_disc_inst._source_ip = None
         mock_disc.return_value = mock_disc_inst
 
         mock_ctrl_inst = MagicMock()
@@ -710,3 +711,39 @@ class TestQueueTitles:
         resp = await c.get("/api/queue")
         data = await resp.json()
         assert len(data["items"]) == 1
+
+
+class TestInterfacesAPI:
+    @pytest.mark.asyncio
+    async def test_list_interfaces(self, client, web_server):
+        c = await client
+        with patch("lancaster.web.list_local_ips", return_value=["192.168.1.10", "10.0.0.5"]):
+            with patch("lancaster.web.get_local_ip", return_value="192.168.1.10"):
+                resp = await c.get("/api/interfaces")
+        assert resp.status == 200
+        data = await resp.json()
+        assert "interfaces" in data
+        assert "current" in data
+        assert "default" in data
+        assert len(data["interfaces"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_select_interface(self, client, web_server):
+        c = await client
+        resp = await c.post(
+            "/api/interfaces/select",
+            json={"ip": "10.0.0.5"},
+        )
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["ok"] is True
+        assert data["ip"] == "10.0.0.5"
+
+    @pytest.mark.asyncio
+    async def test_select_interface_missing_ip(self, client, web_server):
+        c = await client
+        resp = await c.post(
+            "/api/interfaces/select",
+            json={},
+        )
+        assert resp.status == 400

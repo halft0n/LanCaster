@@ -78,3 +78,19 @@ def test_parse_duration_zero():
 def test_parse_duration_large():
     td = parse_duration("99:59:59")
     assert td == timedelta(hours=99, minutes=59, seconds=59)
+
+
+def test_list_local_ips_returns_list():
+    from lancaster.utils import list_local_ips
+
+    result = list_local_ips()
+    assert isinstance(result, list)
+    for ip in result:
+        assert not ip.startswith("127.")
+
+
+def test_list_local_ips_no_duplicates():
+    from lancaster.utils import list_local_ips
+
+    result = list_local_ips()
+    assert len(result) == len(set(result))
