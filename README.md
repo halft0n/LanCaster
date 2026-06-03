@@ -106,7 +106,7 @@ LanCaster/
 ├── lancaster_cli/          # CLI interface
 │   ├── app.py              # Click command group
 │   └── commands/           # discover, cast, probe, control, web, mirror, serve
-├── tests/                  # 119 unit tests
+├── tests/                  # 135 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
 └── pyproject.toml

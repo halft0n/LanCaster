@@ -416,6 +416,7 @@ select {
       <span class="kbd">N</span><span>队列下一首</span>
       <span class="kbd">P</span><span>队列上一首</span>
       <span class="kbd">D</span><span>扫描设备</span>
+      <span class="kbd">R</span><span>刷新镜像状态</span>
       <span class="kbd">T</span><span>切换主题</span>
       <span class="kbd">?</span><span>快捷键帮助</span>
       <span class="kbd">Esc</span><span>关闭弹窗</span>
@@ -648,6 +649,9 @@ select {
         <template x-if="mirrorLoading"><span class="spinner"></span></template>
         <span x-text="mirrorRunning?'停止镜像':'开始镜像'"></span>
       </button>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;text-align:center">
+        需要 FFmpeg · 按 <span class="kbd">R</span> 刷新状态
+      </div>
     </div>
 
     <!-- Media Library -->
@@ -679,6 +683,11 @@ select {
             </template>
           </div>
           <div class="library-tree">
+            <div class="tree-item" x-show="libraryCurrentId!=='0'"
+                 @click="libraryBreadcrumb.length>1?browseLibrary(libraryBreadcrumb[libraryBreadcrumb.length-2].id):browseLibrary('0')">
+              <span class="tree-icon">⬆️</span>
+              <span class="tree-name" style="color:var(--text2)">返回上级</span>
+            </div>
             <template x-for="item in libraryItems" :key="item.id">
               <div class="tree-item" @click="item.is_container?(_pendingBcTitle=item.title,browseLibrary(item.id)):playLibraryItem(item)">
                 <span class="tree-icon" x-text="item.is_container?'📁':getMediaIcon(item.mime_type)"></span>
@@ -692,8 +701,11 @@ select {
           </div>
         </div>
       </template>
-      <div class="empty-state" x-show="libraryItems.length===0&&!libraryScanning">
+      <div class="empty-state" x-show="libraryItems.length===0&&!libraryScanning&&libraryTotal===0">
         输入目录路径并扫描以浏览媒体
+      </div>
+      <div class="empty-state" x-show="libraryItems.length===0&&!libraryScanning&&libraryTotal>0">
+        此文件夹为空
       </div>
     </div>
   </div>
@@ -752,6 +764,10 @@ select {
   <span>·</span>
   <div class="ws-dot" :class="{connected:wsConnected}"></div>
   <span x-text="wsConnected?'实时':'离线'" :style="wsConnected?'color:var(--accent)':''"></span>
+  <span x-show="mirrorRunning" style="color:var(--success)">· 🖥️ 镜像中</span>
+  <span x-show="libraryTotal>0" style="color:var(--text2)">
+    · 📚 <span x-text="libraryTotal"></span>
+  </span>
   <span style="margin-left:auto;opacity:.5">按 ? 查看快捷键</span>
 </div>
 
@@ -948,6 +964,7 @@ function lancaster() {
         case 'n': case 'N': this.queueNext(); break;
         case 'p': case 'P': this.queuePrev(); break;
         case 'd': case 'D': this.scanDevices(); break;
+        case 'r': case 'R': this.checkMirrorStatus(); this.toast('镜像状态已刷新','success'); break;
         case 't': case 'T': this.toggleTheme(); break;
         case '?': this.showHelp = !this.showHelp; break;
         case 'Escape': this.showHelp = false; this.showSettings = false; break;

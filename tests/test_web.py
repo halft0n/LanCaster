@@ -410,6 +410,255 @@ class TestSettingsAPI:
         assert data["poll_interval"] >= 0.5
 
 
+# === Mirror API ===
+
+
+class TestMirrorAPI:
+    @pytest.mark.asyncio
+    async def test_mirror_status_initially_stopped(self, client, web_server):
+        c = await client
+        resp = await c.get("/api/mirror/status")
+        data = await resp.json()
+        assert data["running"] is False
+
+    @pytest.mark.asyncio
+    async def test_mirror_start_no_device(self, client, web_server):
+        web_server["discovery"].renderers = []
+        c = await client
+        resp = await c.post(
+            "/api/mirror/start",
+            json={"fps": 30, "quality": "medium", "audio": False},
+        )
+        assert resp.status == 400
+        data = await resp.json()
+        assert "error" in data
+
+    @pytest.mark.asyncio
+    async def test_mirror_start_success(self, client, web_server):
+        device = _make_device()
+        web_server["discovery"].renderers = [device]
+
+        mirror = web_server["server"]._mirror
+        mirror.start = AsyncMock()
+
+        c = await client
+        resp = await c.post(
+            "/api/mirror/start",
+            json={"fps": 30, "quality": "high", "audio": True},
+        )
+        data = await resp.json()
+        assert data["ok"] is True
+        assert data["quality"] == "high"
+        assert data["fps"] == 30
+        assert data["audio"] is True
+        mirror.start.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mirror_start_already_running(self, client, web_server):
+        device = _make_device()
+        web_server["discovery"].renderers = [device]
+
+        mirror = web_server["server"]._mirror
+        mirror.start = AsyncMock(side_effect=RuntimeError("Already mirroring"))
+
+        c = await client
+        resp = await c.post(
+            "/api/mirror/start",
+            json={"fps": 30, "quality": "medium", "audio": False},
+        )
+        assert resp.status == 400
+        data = await resp.json()
+        assert "Already" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_mirror_stop(self, client, web_server):
+        mirror = web_server["server"]._mirror
+        mirror.stop = AsyncMock()
+
+        c = await client
+        resp = await c.post("/api/mirror/stop")
+        data = await resp.json()
+        assert data["ok"] is True
+        mirror.stop.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mirror_start_default_params(self, client, web_server):
+        device = _make_device()
+        web_server["discovery"].renderers = [device]
+
+        mirror = web_server["server"]._mirror
+        mirror.start = AsyncMock()
+
+        c = await client
+        resp = await c.post("/api/mirror/start", json={})
+        data = await resp.json()
+        assert data["ok"] is True
+        assert data["fps"] == 30
+        assert data["quality"] == "medium"
+        assert data["audio"] is False
+
+
+# === Library API ===
+
+
+class TestLibraryAPI:
+    @pytest.mark.asyncio
+    async def test_browse_without_scan(self, client, web_server):
+        c = await client
+        resp = await c.get("/api/library/browse?id=0")
+        assert resp.status == 400
+        data = await resp.json()
+        assert "error" in data
+
+    @pytest.mark.asyncio
+    async def test_play_without_scan(self, client, web_server):
+        c = await client
+        resp = await c.post("/api/library/play", json={"id": "1"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_scan_no_directories(self, client, web_server):
+        c = await client
+        resp = await c.post("/api/library/scan", json={"directories": []})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_scan_invalid_directory(self, client, web_server):
+        c = await client
+        resp = await c.post(
+            "/api/library/scan",
+            json={"directories": ["/nonexistent/path/xyz123"]},
+        )
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_scan_valid_directory(self, client, web_server, tmp_path):
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "test.mp4").write_text("fake")
+        (media_dir / "song.mp3").write_text("fake")
+        (media_dir / "readme.txt").write_text("not media")
+
+        c = await client
+        resp = await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+        data = await resp.json()
+        assert data["ok"] is True
+        assert data["total_items"] == 2
+
+    @pytest.mark.asyncio
+    async def test_browse_after_scan(self, client, web_server, tmp_path):
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "movie.mp4").write_text("fake")
+        sub = media_dir / "sub"
+        sub.mkdir()
+        (sub / "clip.mp4").write_text("fake")
+
+        c = await client
+        await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+
+        resp = await c.get("/api/library/browse?id=0")
+        data = await resp.json()
+        assert len(data["items"]) == 2
+        titles = [it["title"] for it in data["items"]]
+        assert "sub" in titles
+        assert "movie.mp4" in titles
+
+    @pytest.mark.asyncio
+    async def test_browse_subfolder(self, client, web_server, tmp_path):
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        sub = media_dir / "videos"
+        sub.mkdir()
+        (sub / "clip.mp4").write_text("fake")
+
+        c = await client
+        await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+
+        root_resp = await c.get("/api/library/browse?id=0")
+        root_data = await root_resp.json()
+        folder = next(it for it in root_data["items"] if it["is_container"])
+
+        resp = await c.get(f"/api/library/browse?id={folder['id']}")
+        data = await resp.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["title"] == "clip.mp4"
+        assert data["items"][0]["mime_type"].startswith("video/")
+
+    @pytest.mark.asyncio
+    async def test_play_library_item(self, client, web_server, tmp_path):
+        device = _make_device()
+        web_server["discovery"].renderers = [device]
+
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "movie.mp4").write_text("fake")
+
+        c = await client
+        await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+
+        browse_resp = await c.get("/api/library/browse?id=0")
+        items = (await browse_resp.json())["items"]
+        media_item = next(it for it in items if not it["is_container"])
+
+        resp = await c.post("/api/library/play", json={"id": media_item["id"]})
+        data = await resp.json()
+        assert data["ok"] is True
+        assert data["title"] == "movie.mp4"
+        web_server["controller"].play_file.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_play_invalid_item(self, client, web_server, tmp_path):
+        device = _make_device()
+        web_server["discovery"].renderers = [device]
+
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "movie.mp4").write_text("fake")
+
+        c = await client
+        await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+
+        resp = await c.post("/api/library/play", json={"id": "999"})
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_play_no_device(self, client, web_server, tmp_path):
+        web_server["discovery"].renderers = []
+
+        media_dir = tmp_path / "media"
+        media_dir.mkdir()
+        (media_dir / "movie.mp4").write_text("fake")
+
+        c = await client
+        await c.post(
+            "/api/library/scan",
+            json={"directories": [str(media_dir)]},
+        )
+
+        browse_resp = await c.get("/api/library/browse?id=0")
+        items = (await browse_resp.json())["items"]
+        media_item = next(it for it in items if not it["is_container"])
+
+        resp = await c.post("/api/library/play", json={"id": media_item["id"]})
+        assert resp.status == 400
+
+
 # === WebSocket ===
 
 
