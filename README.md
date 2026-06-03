@@ -7,10 +7,12 @@ A full-featured DLNA video casting tool — cast local videos, online URLs, or e
 ## Features
 
 - **Local file casting** — select a video on your PC and play it on your TV
-- **Online URL casting** — send a video URL directly to your TV
-- **Web UI** — browser-based control panel with device discovery, casting, and playback controls
-- **Media library sharing** — expose folders as a DLNA Media Server for your TV to browse *(planned)*
-- **Desktop mirroring** — stream your desktop to the TV in real time via FFmpeg *(planned)*
+- **Smart URL casting** — HTTP direct or HTTPS proxied, auto-detected
+- **Auto transcoding** — probe media format, auto-transcode incompatible codecs via FFmpeg
+- **Web UI** — browser-based control panel with WebSocket real-time updates
+- **Playlist queue** — add multiple items, auto-advance, reorder
+- **Media library sharing** — expose folders as a DLNA Media Server *(planned)*
+- **Desktop mirroring** — stream your desktop to the TV in real time *(planned)*
 
 ## Quick Start
 
@@ -24,14 +26,22 @@ pip install -e ".[dev]"
 # Discover devices on the network
 lancaster discover
 
-# Cast a local video to your TV
+# Cast a local video (auto-probes + transcodes if needed)
 lancaster cast movie.mp4
 
 # Cast to a specific device
 lancaster cast movie.mp4 -d "Living Room TV"
 
-# Cast a URL
-lancaster cast "https://example.com/video.mp4"
+# Cast without auto-transcode
+lancaster cast movie.mkv --no-transcode
+
+# Cast a URL (auto-detects direct vs proxied)
+lancaster cast "http://example.com/video.mp4"      # direct mode
+lancaster cast "https://example.com/video.mp4"     # proxied mode
+lancaster cast "http://example.com/v.mp4" --force-proxy  # force proxy
+
+# Probe a file without casting
+lancaster probe movie.mkv
 
 # Playback control
 lancaster pause
@@ -52,10 +62,15 @@ lancaster web -p 9000      # Use a custom port
 Open `http://<your-ip>:8200` in a browser. The Web UI provides:
 
 - **Device discovery** — scan and select DLNA renderers
-- **Three casting modes** — URL, local file path, or file upload with progress bar
+- **Three casting modes** — URL (smart routing), local file path, or file upload
+- **Playlist queue** — add/remove/reorder, auto-advance, prev/next navigation
 - **Playback controls** — play/pause, stop, seek, volume, progress bar
-- **Playback history** — remembers recent casts (stored in browser localStorage)
-- **Keyboard shortcuts** — Space (play/pause), arrows (seek/volume), S (stop), M (mute), and more — press `?` to view all
+- **WebSocket real-time status** — no polling, instant updates
+- **Settings panel** — poll interval, auto-scan, default volume
+- **Subtitle upload** — drag-and-drop .srt/.ass/.vtt alongside video
+- **Upload progress bar** — real-time upload percentage
+- **Playback history** — remembers recent casts (localStorage)
+- **14 keyboard shortcuts** — Space, arrows, S, M, N, P, D, T, ? and more
 - **Dark/Light theme** — toggle with button or `T` key
 - **Mobile responsive** — works on phones and tablets
 
@@ -64,12 +79,14 @@ Open `http://<your-ip>:8200` in a browser. The Web UI provides:
 ```
 LanCaster/
 ├── lancaster/              # Core library
-│   ├── models.py           # Data classes (DLNADevice, PlaybackInfo, etc.)
+│   ├── models.py           # Data classes (DLNADevice, MediaInfo, PlaybackInfo)
 │   ├── discovery.py        # SSDP device discovery
 │   ├── controller.py       # DLNA playback control (DMC)
+│   ├── transcoder.py       # FFmpeg probe + transcode
+│   ├── url_proxy.py        # URL routing (direct / proxied / transcode)
 │   ├── http_server.py      # Local file HTTP server with Range support
 │   ├── didl.py             # DIDL-Lite XML builder
-│   ├── web.py              # Web UI server + REST API
+│   ├── web.py              # Web UI server + REST API + WebSocket
 │   ├── templates/
 │   │   └── index.html      # Single-file frontend (Alpine.js)
 │   ├── config.py           # User configuration (~/.lancaster/)
@@ -77,8 +94,8 @@ LanCaster/
 │   └── exceptions.py       # Custom exceptions
 ├── lancaster_cli/          # CLI interface
 │   ├── app.py              # Click command group
-│   └── commands/           # discover, cast, control, web
-├── tests/                  # 42 unit tests
+│   └── commands/           # discover, cast, probe, control, web
+├── tests/                  # 91 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
 └── pyproject.toml
@@ -91,35 +108,42 @@ LanCaster/
 | Async runtime | `asyncio` |
 | DLNA/UPnP | `async-upnp-client` |
 | HTTP server | `aiohttp` |
+| Media probing | FFmpeg `ffprobe` subprocess |
+| Transcoding | FFmpeg subprocess (NVENC/QSV/AMF auto-detect) |
 | DIDL-Lite XML | `python-didl-lite` |
 | CLI framework | `click` + `rich` |
 | Web frontend | Alpine.js (CDN, zero build step) |
+| Real-time | WebSocket (`aiohttp`) |
 | Testing | `pytest` + `pytest-asyncio` + `pytest-aiohttp` |
 
 ## REST API
 
-When the Web UI is running, the following API endpoints are available:
+When the Web UI is running (`lancaster web`), these endpoints are available:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/devices` | GET | Scan for DLNA devices |
 | `/api/devices/select` | POST | Select active renderer |
-| `/api/cast` | POST | Cast URL or file path |
-| `/api/upload` | POST | Upload and cast a file |
+| `/api/cast` | POST | Cast URL (smart routing) or file path |
+| `/api/upload` | POST | Upload video + optional subtitle and cast |
 | `/api/control/{action}` | POST | pause / resume / stop / seek / volume |
 | `/api/status` | GET | Current playback state |
+| `/api/queue/*` | GET/POST | Playlist queue management |
+| `/api/subtitle` | POST | Upload subtitle file |
+| `/api/settings` | GET/POST | Server settings |
+| `/ws` | WebSocket | Real-time status push |
 
 ## Requirements
 
 - Python 3.10+
 - A DLNA-compatible smart TV on the same WiFi network
-- FFmpeg *(optional, for future transcoding and desktop mirroring)*
+- FFmpeg *(optional but recommended — enables transcoding and media probing)*
 
 ## Roadmap
 
 - [x] Phase 1: MVP CLI (discover, cast, control)
-- [x] Web UI (browser-based control panel)
-- [ ] Phase 2: FFmpeg transcoding + URL proxy
+- [x] Web UI (browser-based control panel with WebSocket + queue)
+- [x] Phase 2: FFmpeg transcoder + URL proxy
 - [ ] Phase 3: Media library sharing (DMS) + desktop mirroring
 - [ ] Phase 4: Native GUI (PyQt6 or Tauri)
 
