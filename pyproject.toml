@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lancaster"
+version = "0.1.0"
+description = "A full-featured DLNA video casting tool for Windows"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "LanCaster Contributors" }]
+keywords = ["dlna", "upnp", "casting", "media", "streaming"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "async-upnp-client>=0.46.0",
+    "aiohttp>=3.9.0",
+    "python-didl-lite>=1.5.0",
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy"]
+
+[project.scripts]
+lancaster = "lancaster_cli.app:main"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

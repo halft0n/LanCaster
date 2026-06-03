@@ -1,0 +1,1 @@
+"""LanCaster CLI package."""
