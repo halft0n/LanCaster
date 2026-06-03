@@ -383,7 +383,7 @@ select {
   <div class="logo">L</div>
   <h1>LanCaster</h1>
   <div class="header-right">
-    <span class="hide-mobile" style="color:var(--text2);font-size:12px">DLNA 投屏控制台</span>
+    <span class="hide-mobile" style="color:var(--text2);font-size:12px" x-text="isDesktop?'桌面版':'DLNA 投屏控制台'"></span>
     <button class="theme-btn" @click="toggleTheme()" :title="theme==='dark'?'亮色模式':'暗色模式'">
       <span x-text="theme==='dark'?'☀️':'🌙'"></span>
     </button>
@@ -391,6 +391,19 @@ select {
     <button class="help-btn" @click="showHelp=true" title="快捷键 (?)">⌨️</button>
   </div>
 </header>
+
+<!-- Desktop drop overlay -->
+<div x-show="isDesktop&&bodyDragover" x-transition.opacity
+     style="position:fixed;inset:0;z-index:9999;background:rgba(108,92,231,.15);
+            border:3px dashed var(--primary);display:flex;align-items:center;justify-content:center;
+            backdrop-filter:blur(2px);pointer-events:none">
+  <div style="background:var(--surface);padding:24px 36px;border-radius:16px;
+              box-shadow:0 8px 32px rgba(0,0,0,.3);text-align:center">
+    <div style="font-size:36px;margin-bottom:8px">📂</div>
+    <div style="font-size:14px;font-weight:600">释放文件以投屏</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:4px">支持视频 + 字幕文件</div>
+  </div>
+</div>
 
 <!-- Toasts -->
 <div class="toast-container">
@@ -768,6 +781,7 @@ select {
   <span x-show="libraryTotal>0" style="color:var(--text2)">
     · 📚 <span x-text="libraryTotal"></span>
   </span>
+  <span x-show="isDesktop" style="color:var(--primary)">· 🖥 桌面版</span>
   <span style="margin-left:auto;opacity:.5">按 ? 查看快捷键</span>
 </div>
 
@@ -790,6 +804,8 @@ function lancaster() {
     mirrorQuality: 'medium', mirrorFps: '30', mirrorAudio: false,
     libraryDir: '', libraryScanning: false, libraryTotal: 0,
     libraryItems: [], libraryBreadcrumb: [], libraryCurrentId: '0',
+    isDesktop: !!(window.pywebview && window.pywebview.api),
+    bodyDragover: false,
     status: {
       device: null, state: 'NO_DEVICE', title: '',
       position: '00:00:00', duration: '00:00:00',
@@ -808,6 +824,27 @@ function lancaster() {
       this.loadSettings();
       this.loadQueue();
       this.checkMirrorStatus();
+      this._setupDesktopDrop();
+    },
+
+    _setupDesktopDrop() {
+      if (typeof pywebview !== 'undefined') this.isDesktop = true;
+      else setTimeout(() => { if (typeof pywebview !== 'undefined') this.isDesktop = true; }, 1000);
+
+      document.body.addEventListener('dragover', (e) => { e.preventDefault(); this.bodyDragover = true; });
+      document.body.addEventListener('dragleave', (e) => {
+        if (e.relatedTarget === null) this.bodyDragover = false;
+      });
+      document.body.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        this.bodyDragover = false;
+        if (!this.isDesktop) return;
+        const files = [];
+        if (e.dataTransfer && e.dataTransfer.files) {
+          for (const f of e.dataTransfer.files) files.push(f.name);
+        }
+        if (files.length > 0) await this.handleDesktopDrop(files);
+      });
     },
 
     /* WebSocket */
@@ -1077,6 +1114,21 @@ function lancaster() {
       l = Math.max(0, Math.min(100, parseInt(l)));
       if (l > 0) this.muted = false;
       this.apiControl('volume', { level: l });
+    },
+
+    /* Desktop drop (pywebview bridge) */
+    async handleDesktopDrop(filenames) {
+      if (!this.isDesktop || !window.pywebview || !window.pywebview.api) return;
+      try {
+        const result = await window.pywebview.api.cast_dropped_files(filenames);
+        if (!result.ok) { this.toast(result.error || '拖拽失败', 'error'); return; }
+        if (result.video) {
+          this.castTab = 'file';
+          this.castPath = result.video;
+          await this.castTarget();
+          this.toast('拖拽投屏: ' + result.video.split(/[\\/]/).pop(), 'success');
+        }
+      } catch (e) { this.toast('拖拽处理失败: ' + e.message, 'error'); }
     },
 
     /* Mirror */

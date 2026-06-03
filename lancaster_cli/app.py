@@ -6,6 +6,7 @@ import click
 
 from lancaster_cli.commands.cast import cast
 from lancaster_cli.commands.control import pause, resume, seek, status, stop, volume
+from lancaster_cli.commands.desktop import desktop
 from lancaster_cli.commands.discover import discover
 from lancaster_cli.commands.mirror import mirror
 from lancaster_cli.commands.probe import probe
@@ -28,6 +29,7 @@ main.add_command(seek)
 main.add_command(volume)
 main.add_command(status)
 main.add_command(probe)
+main.add_command(desktop)
 main.add_command(mirror)
 main.add_command(serve)
 main.add_command(web)

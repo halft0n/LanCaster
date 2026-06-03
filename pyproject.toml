@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "pytest-aiohttp", "ruff", "mypy"]
+desktop = ["pywebview>=5.0", "pystray>=0.19", "Pillow>=10.0"]
 
 [project.scripts]
 lancaster = "lancaster_cli.app:main"

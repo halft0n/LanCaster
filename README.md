@@ -13,6 +13,7 @@ A full-featured DLNA video casting tool — cast local videos, online URLs, or e
 - **Playlist queue** — add multiple items, auto-advance, reorder
 - **Media library sharing** — expose folders as a DLNA Media Server, TV can browse and play
 - **Desktop mirroring** — stream your desktop to the TV in real time via FFmpeg
+- **Desktop app** — native window with system tray via pywebview (drag-and-drop casting)
 
 ## Quick Start
 
@@ -51,6 +52,10 @@ lancaster mirror --audio                   # include system audio
 # Share a media library (TV browses and plays)
 lancaster serve ~/Movies ~/Music
 lancaster serve /mnt/media -p 9000
+
+# Launch desktop app (native window + system tray)
+pip install lancaster[desktop]   # first time only
+lancaster desktop
 
 # Playback control
 lancaster pause
@@ -95,6 +100,7 @@ LanCaster/
 │   ├── url_proxy.py        # URL routing (direct / proxied / transcode)
 │   ├── http_server.py      # Local file HTTP server with Range support
 │   ├── didl.py             # DIDL-Lite XML builder
+│   ├── desktop.py          # Desktop GUI (pywebview + pystray)
 │   ├── mirror.py           # Desktop mirroring (FFmpeg screen capture)
 │   ├── media_server.py     # DLNA Media Server (DMS)
 │   ├── web.py              # Web UI server + REST API + WebSocket
@@ -105,7 +111,7 @@ LanCaster/
 │   └── exceptions.py       # Custom exceptions
 ├── lancaster_cli/          # CLI interface
 │   ├── app.py              # Click command group
-│   └── commands/           # discover, cast, probe, control, web, mirror, serve
+│   └── commands/           # discover, cast, probe, control, web, mirror, serve, desktop
 ├── tests/                  # 135 unit tests
 ├── docs/
 │   └── ARCHITECTURE.md     # Detailed design document (1100+ lines)
@@ -162,7 +168,7 @@ When the Web UI is running (`lancaster web`), these endpoints are available:
 - [x] Web UI (browser-based control panel with WebSocket + queue)
 - [x] Phase 2: FFmpeg transcoder + URL proxy
 - [x] Phase 3: Media library sharing (DMS) + desktop mirroring
-- [ ] Phase 4: Native GUI (PyQt6 or Tauri)
+- [x] Phase 4: Desktop app (pywebview + pystray, drag-and-drop casting)
 
 ## License
 
