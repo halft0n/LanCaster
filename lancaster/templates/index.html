@@ -309,6 +309,46 @@ select {
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 
+/* === Mirror === */
+.mirror-status {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-radius: var(--radius-sm); background: var(--surface2);
+  font-size: 13px; margin-bottom: 12px;
+}
+.mirror-status.running { background: rgba(0,184,148,.1); border: 1px solid rgba(0,184,148,.3); }
+.mirror-pulse {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.mirror-pulse.idle { background: var(--text2); }
+.mirror-pulse.running { background: var(--success); animation: pulse 1.5s infinite; }
+.mirror-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.mirror-options label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 3px; }
+
+/* === Library === */
+.library-tree {
+  max-height: 320px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 4px;
+}
+.tree-item {
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+  border-radius: 4px; cursor: pointer; font-size: 12px;
+  transition: background 0.12s;
+}
+.tree-item:hover { background: var(--surface2); }
+.tree-item.playing { background: var(--primary-glow); border-left: 2px solid var(--primary); }
+.tree-icon { flex-shrink: 0; font-size: 14px; }
+.tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.tree-item:hover .tree-actions { opacity: 1; }
+.breadcrumb {
+  display: flex; align-items: center; gap: 4px; font-size: 11px;
+  color: var(--text2); margin-bottom: 8px; flex-wrap: wrap;
+}
+.breadcrumb span { cursor: pointer; transition: color 0.12s; }
+.breadcrumb span:hover { color: var(--primary); }
+.breadcrumb .sep { color: var(--border); cursor: default; }
+
 .empty-state { text-align: center; padding: 18px; color: var(--text2); font-size: 12px; }
 .spinner {
   display: inline-block; width: 12px; height: 12px;
@@ -567,7 +607,98 @@ select {
     </div>
   </div>
 
-  <!-- Row 3: Player -->
+  <!-- Row 3: Mirror + Library -->
+  <div class="grid-2">
+    <!-- Desktop Mirror -->
+    <div class="card">
+      <div class="card-title">🖥️ 桌面镜像</div>
+      <div class="mirror-status" :class="{running: mirrorRunning}">
+        <div class="mirror-pulse" :class="mirrorRunning?'running':'idle'"></div>
+        <span x-text="mirrorRunning?'正在投屏桌面...':'未启动'"></span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text2)"
+              x-show="mirrorRunning" x-text="mirrorQuality+' · '+mirrorFps+'fps'"></span>
+      </div>
+      <div class="mirror-options" x-show="!mirrorRunning">
+        <div>
+          <label>画质</label>
+          <select x-model="mirrorQuality" style="width:100%">
+            <option value="low">低 (720p)</option>
+            <option value="medium">中 (1080p)</option>
+            <option value="high">高 (原始)</option>
+          </select>
+        </div>
+        <div>
+          <label>帧率</label>
+          <select x-model="mirrorFps" style="width:100%">
+            <option value="15">15 fps</option>
+            <option value="24">24 fps</option>
+            <option value="30">30 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px" x-show="!mirrorRunning">
+        <div class="toggle" :class="{on: mirrorAudio}"
+             @click="mirrorAudio=!mirrorAudio"></div>
+        <span style="font-size:12px;color:var(--text2)">捕获系统音频（实验性）</span>
+      </div>
+      <button class="btn btn-primary" style="width:100%"
+              @click="mirrorRunning?stopMirror():startMirror()"
+              :disabled="mirrorLoading">
+        <template x-if="mirrorLoading"><span class="spinner"></span></template>
+        <span x-text="mirrorRunning?'停止镜像':'开始镜像'"></span>
+      </button>
+    </div>
+
+    <!-- Media Library -->
+    <div class="card">
+      <div class="card-title">
+        📚 媒体库
+        <div class="right">
+          <span style="font-size:11px;color:var(--text2)" x-show="libraryTotal>0"
+                x-text="libraryTotal+' 个文件'"></span>
+        </div>
+      </div>
+      <div class="input-group" style="margin-bottom:10px">
+        <input type="text" x-model="libraryDir" placeholder="输入目录路径，如 /home/user/Movies">
+        <button class="btn btn-sm" @click="scanLibrary()" :disabled="!libraryDir||libraryScanning">
+          <template x-if="libraryScanning"><span class="spinner"></span></template>
+          <span x-text="libraryScanning?'扫描中...':'扫描'"></span>
+        </button>
+      </div>
+
+      <template x-if="libraryItems.length>0">
+        <div>
+          <div class="breadcrumb">
+            <span @click="browseLibrary('0')">根目录</span>
+            <template x-for="(bc,i) in libraryBreadcrumb" :key="bc.id">
+              <span style="display:contents">
+                <span class="sep">/</span>
+                <span @click="browseLibrary(bc.id)" x-text="bc.title"></span>
+              </span>
+            </template>
+          </div>
+          <div class="library-tree">
+            <template x-for="item in libraryItems" :key="item.id">
+              <div class="tree-item" @click="item.is_container?(_pendingBcTitle=item.title,browseLibrary(item.id)):playLibraryItem(item)">
+                <span class="tree-icon" x-text="item.is_container?'📁':getMediaIcon(item.mime_type)"></span>
+                <span class="tree-name" x-text="item.title"></span>
+                <div class="tree-actions" x-show="!item.is_container">
+                  <button class="btn btn-xs btn-ghost" @click.stop="playLibraryItem(item)" title="播放">▶</button>
+                  <button class="btn btn-xs btn-ghost" @click.stop="addToQueue(item.path,'file')" title="加入队列">+</button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+      <div class="empty-state" x-show="libraryItems.length===0&&!libraryScanning">
+        输入目录路径并扫描以浏览媒体
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Player -->
   <div class="player">
     <div class="now-playing">
       <div class="title" x-text="status.title||'未在播放'"></div>
@@ -639,6 +770,10 @@ function lancaster() {
     queue: [], queueIndex: -1,
     wsConnected: false, ws: null,
     settings: { poll_interval: 2, auto_scan: false, auto_scan_interval: 30, default_volume: 50 },
+    mirrorRunning: false, mirrorLoading: false,
+    mirrorQuality: 'medium', mirrorFps: '30', mirrorAudio: false,
+    libraryDir: '', libraryScanning: false, libraryTotal: 0,
+    libraryItems: [], libraryBreadcrumb: [], libraryCurrentId: '0',
     status: {
       device: null, state: 'NO_DEVICE', title: '',
       position: '00:00:00', duration: '00:00:00',
@@ -656,6 +791,7 @@ function lancaster() {
       this.connectWS();
       this.loadSettings();
       this.loadQueue();
+      this.checkMirrorStatus();
     },
 
     /* WebSocket */
@@ -924,6 +1060,104 @@ function lancaster() {
       l = Math.max(0, Math.min(100, parseInt(l)));
       if (l > 0) this.muted = false;
       this.apiControl('volume', { level: l });
+    },
+
+    /* Mirror */
+    async checkMirrorStatus() {
+      try {
+        const r = await fetch('/api/mirror/status');
+        const d = await r.json();
+        this.mirrorRunning = d.running;
+      } catch {}
+    },
+    async startMirror() {
+      this.mirrorLoading = true;
+      try {
+        const r = await fetch('/api/mirror/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fps: parseInt(this.mirrorFps), quality: this.mirrorQuality, audio: this.mirrorAudio }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        this.mirrorRunning = true;
+        this.toast('桌面镜像已启动', 'success');
+      } catch (e) { this.toast('镜像启动失败: ' + e.message, 'error'); }
+      this.mirrorLoading = false;
+    },
+    async stopMirror() {
+      this.mirrorLoading = true;
+      try {
+        await fetch('/api/mirror/stop', { method: 'POST' });
+        this.mirrorRunning = false;
+        this.toast('桌面镜像已停止', 'success');
+      } catch (e) { this.toast('停止失败', 'error'); }
+      this.mirrorLoading = false;
+    },
+
+    /* Library */
+    getMediaIcon(mime) {
+      if (!mime) return '📄';
+      if (mime.startsWith('video/')) return '🎬';
+      if (mime.startsWith('audio/')) return '🎵';
+      if (mime.startsWith('image/')) return '🖼️';
+      return '📄';
+    },
+    async scanLibrary() {
+      if (!this.libraryDir) return;
+      this.libraryScanning = true;
+      try {
+        const r = await fetch('/api/library/scan', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ directories: [this.libraryDir] }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        this.libraryTotal = d.total_items;
+        this.toast(`扫描完成: ${d.total_items} 个媒体文件`, 'success');
+        this.libraryBreadcrumb = [];
+        this.libraryCurrentId = '0';
+        await this.browseLibrary('0');
+      } catch (e) { this.toast('扫描失败: ' + e.message, 'error'); }
+      this.libraryScanning = false;
+    },
+    async browseLibrary(objectId) {
+      try {
+        const r = await fetch(`/api/library/browse?id=${objectId}`);
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        this.libraryItems = d.items;
+        if (objectId === '0') {
+          this.libraryBreadcrumb = [];
+        } else {
+          const idx = this.libraryBreadcrumb.findIndex(b => b.id === objectId);
+          if (idx >= 0) {
+            this.libraryBreadcrumb = this.libraryBreadcrumb.slice(0, idx + 1);
+          } else {
+            const clicked = this.libraryItems.length > 0 ? null : objectId;
+            const existing = this.libraryBreadcrumb;
+            const node = { id: objectId, title: objectId };
+            // find the title from the parent items if we came from a folder click
+            if (this._pendingBcTitle) {
+              node.title = this._pendingBcTitle;
+              this._pendingBcTitle = null;
+            }
+            existing.push(node);
+            this.libraryBreadcrumb = existing;
+          }
+        }
+        this.libraryCurrentId = objectId;
+      } catch (e) { this.toast('浏览失败: ' + e.message, 'error'); }
+    },
+    async playLibraryItem(item) {
+      try {
+        const r = await fetch('/api/library/play', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        this.toast(`播放: ${d.title} → ${d.device}`, 'success');
+      } catch (e) { this.toast('播放失败: ' + e.message, 'error'); }
     },
   };
 }
