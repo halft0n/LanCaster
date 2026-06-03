@@ -22,8 +22,8 @@ def _make_device(name="Test TV"):
 @pytest.fixture
 def mock_http_server():
     srv = MagicMock()
-    srv.serve_stream = AsyncMock(return_value="http://192.168.1.50:8201/stream/abc")
-    srv.serve_file = AsyncMock(return_value="http://192.168.1.50:8201/files/dl.mp4")
+    srv.serve_stream = MagicMock(return_value="http://192.168.1.50:8201/stream/abc")
+    srv.serve_file = MagicMock(return_value="http://192.168.1.50:8201/files/dl.mp4")
     return srv
 
 

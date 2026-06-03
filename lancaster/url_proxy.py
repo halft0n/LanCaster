@@ -115,5 +115,5 @@ class URLProxy:
                 data = await resp.read()
                 local_path.write_bytes(data)
 
-        local_url = await self._http_server.serve_file(local_path)
+        local_url = self._http_server.serve_file(local_path)
         await self._controller.play_url(device, local_url, title=title)

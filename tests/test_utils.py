@@ -43,3 +43,38 @@ def test_parse_duration_mmss():
 def test_parse_duration_seconds():
     td = parse_duration("90")
     assert td == timedelta(seconds=90)
+
+
+def test_guess_mime_type_case_insensitive():
+    assert guess_mime_type("VIDEO.MP4") == "video/mp4"
+    assert guess_mime_type("audio.FLAC") == "audio/flac"
+
+
+def test_guess_mime_type_various_video():
+    assert guess_mime_type("v.avi") == "video/x-msvideo"
+    assert guess_mime_type("v.mov") == "video/quicktime"
+    assert guess_mime_type("v.wmv") == "video/x-ms-wmv"
+    assert guess_mime_type("v.webm") == "video/webm"
+    assert guess_mime_type("v.flv") == "video/x-flv"
+    assert guess_mime_type("v.ts") == "video/mp2t"
+
+
+def test_guess_mime_type_various_audio():
+    assert guess_mime_type("a.wav") == "audio/wav"
+    assert guess_mime_type("a.aac") == "audio/aac"
+    assert guess_mime_type("a.ogg") == "audio/ogg"
+    assert guess_mime_type("a.wma") == "audio/x-ms-wma"
+
+
+def test_format_duration_zero():
+    assert format_duration(timedelta(0)) == "00:00:00"
+
+
+def test_parse_duration_zero():
+    td = parse_duration("0")
+    assert td == timedelta(0)
+
+
+def test_parse_duration_large():
+    td = parse_duration("99:59:59")
+    assert td == timedelta(hours=99, minutes=59, seconds=59)

@@ -32,7 +32,7 @@ def server(media_dir):
         mock_http_inst = MagicMock()
         mock_http_inst.start = AsyncMock()
         mock_http_inst.stop = AsyncMock()
-        mock_http_inst.serve_file = AsyncMock(
+        mock_http_inst.serve_file = MagicMock(
             return_value="http://192.168.1.50:8201/files/test.mp4"
         )
         mock_http.return_value = mock_http_inst

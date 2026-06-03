@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-import mimetypes
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 from lancaster.http_server import HTTPFileServer
+from lancaster.utils import guess_mime_type
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ class MediaServer:
             if entry.is_dir():
                 self._scan_dir_recursive(entry, parent)
             elif entry.suffix.lower() in _MEDIA_EXTENSIONS:
-                mime = mimetypes.guess_type(str(entry))[0] or "application/octet-stream"
+                mime = guess_mime_type(entry)
                 item = MediaNode(
                     object_id=self._alloc_id(),
                     parent_id=parent.object_id,

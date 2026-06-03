@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from lancaster.desktop import DesktopApp, _DesktopBridge
 
 # === DesktopApp ===
@@ -172,6 +174,62 @@ class TestDesktopBridge:
 
 
 # === Tray icon ===
+
+
+class TestDesktopAppLifecycle:
+    def test_on_closing_returns_true(self):
+        app = DesktopApp()
+        assert app._on_closing() is True
+
+    def test_debug_mode_default_false(self):
+        app = DesktopApp()
+        assert app._debug is False
+
+    def test_debug_mode_enabled(self):
+        app = DesktopApp(debug=True)
+        assert app._debug is True
+
+    def test_run_without_webview_exits(self):
+        app = DesktopApp()
+        with patch.dict("sys.modules", {"webview": None}):
+            with pytest.raises(SystemExit):
+                app.run()
+
+    def test_on_shown_calls_create_tray(self):
+
+        app = DesktopApp()
+        with patch("lancaster.desktop._create_tray_icon", return_value=None) as mock_tray:
+            app._on_shown()
+            mock_tray.assert_called_once()
+
+
+class TestDesktopBridgeEdgeCases:
+    def _make_bridge(self):
+        return _DesktopBridge(DesktopApp())
+
+    def test_cast_windows_paths(self):
+        bridge = self._make_bridge()
+        result = bridge.cast_dropped_files(["C:\\Users\\test\\movie.mp4"])
+        assert result["ok"] is True
+        assert result["video"] == "C:\\Users\\test\\movie.mp4"
+
+    def test_cast_mixed_media_and_subtitles(self):
+        bridge = self._make_bridge()
+        result = bridge.cast_dropped_files(
+            [
+                "/home/user/movie.flac",
+                "/home/user/sub.ssa",
+            ]
+        )
+        assert result["ok"] is True
+        assert result["video"] == "/home/user/movie.flac"
+        assert result["subtitle"] == "/home/user/sub.ssa"
+
+    def test_cast_webm_file(self):
+        bridge = self._make_bridge()
+        result = bridge.cast_dropped_files(["/path/to/video.webm"])
+        assert result["ok"] is True
+        assert result["video"] == "/path/to/video.webm"
 
 
 class TestTrayIcon:

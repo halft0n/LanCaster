@@ -669,3 +669,44 @@ class TestWebSocket:
         ws = await c.ws_connect("/ws")
         assert web_server["server"]._ws_clients
         await ws.close()
+
+
+# === Queue path handling ===
+
+
+class TestQueueTitles:
+    @pytest.mark.asyncio
+    async def test_unix_path_title(self, client, web_server):
+        c = await client
+        await c.post("/api/queue/add", json={"targets": ["/home/user/movie.mp4"]})
+        resp = await c.get("/api/queue")
+        data = await resp.json()
+        assert data["items"][0]["title"] == "movie.mp4"
+
+    @pytest.mark.asyncio
+    async def test_url_title(self, client, web_server):
+        c = await client
+        await c.post(
+            "/api/queue/add",
+            json={"targets": ["http://example.com/video/test.mp4"]},
+        )
+        resp = await c.get("/api/queue")
+        data = await resp.json()
+        assert data["items"][0]["title"] == "test.mp4"
+
+    @pytest.mark.asyncio
+    async def test_queue_multiple_add(self, client, web_server):
+        c = await client
+        await c.post("/api/queue/add", json={"targets": ["/a.mp4", "/b.mkv", "/c.avi"]})
+        resp = await c.get("/api/queue")
+        data = await resp.json()
+        assert len(data["items"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_queue_string_target(self, client, web_server):
+        """Single string target should be handled."""
+        c = await client
+        await c.post("/api/queue/add", json={"targets": "/single.mp4"})
+        resp = await c.get("/api/queue")
+        data = await resp.json()
+        assert len(data["items"]) == 1

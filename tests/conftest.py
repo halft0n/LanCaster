@@ -1,8 +1,18 @@
 """Shared test fixtures for LanCaster."""
 
+import asyncio
+import sys
+
 import pytest
 
 from lancaster.models import DeviceType, DLNADevice
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _windows_event_loop_policy():
+    """Use ProactorEventLoop on Windows for subprocess support."""
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @pytest.fixture

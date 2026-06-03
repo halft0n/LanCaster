@@ -148,9 +148,21 @@ class HTTPFileServer:
             return response
 
         try:
-            async for chunk in stream:
-                await response.write(chunk)
-        except (ConnectionResetError, asyncio.CancelledError):
+            if hasattr(stream, "read"):
+                while True:
+                    chunk = await stream.read(65536)
+                    if not chunk:
+                        break
+                    await response.write(chunk)
+            else:
+                async for chunk in stream:
+                    await response.write(chunk)
+        except (
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+            asyncio.CancelledError,
+        ):
             pass
 
         return response

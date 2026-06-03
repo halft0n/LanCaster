@@ -132,10 +132,7 @@ class DesktopMirror:
 
         self._running = True
 
-        stream_url = await self._http_server.serve_stream(
-            self._process.stdout,
-            content_type="video/mp2t",
-        )
+        stream_url = self._http_server.serve_stream(self._process.stdout)
 
         await self._controller.play_url(
             device,

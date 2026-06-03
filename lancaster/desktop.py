@@ -86,6 +86,8 @@ class DesktopApp:
         """Run the aiohttp WebServer in a background thread with its own event loop."""
         from lancaster.web import WebServer
 
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         self._loop = asyncio.new_event_loop()
         self._web_server = WebServer(host=self._host, port=self._port)
 

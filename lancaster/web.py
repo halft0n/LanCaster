@@ -427,7 +427,7 @@ class WebServer:
             targets = [targets]
         for t in targets:
             is_url = t.startswith(("http://", "https://"))
-            title = t.rsplit("/", 1)[-1] if "/" in t else t
+            title = Path(t).name if not is_url else (t.rsplit("/", 1)[-1] if "/" in t else t)
             self._queue.append(
                 QueueItem(
                     target=t,
