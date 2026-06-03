@@ -37,6 +37,10 @@ jobs:
           sudo apt-get install -y libgirepository1.0-dev libcairo2-dev \
             gir1.2-webkit2-4.1 || true
 
+      - name: Install NSIS (Windows)
+        if: runner.os == 'Windows'
+        run: choco install nsis -y
+
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
@@ -46,11 +50,26 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller lancaster.spec
 
-      - name: Upload artifact
+      - name: Build Windows installer (NSIS)
+        if: runner.os == 'Windows'
+        run: |
+          $env:PATH += ";C:\Program Files (x86)\NSIS"
+          makensis installer\lancaster.nsi
+        shell: pwsh
+
+      - name: Upload portable artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: dist/LanCaster/
+          retention-days: 30
+
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: LanCaster-Setup
+          path: dist/LanCaster-Setup.exe
           retention-days: 30
 
   release:
@@ -68,11 +87,14 @@ jobs:
           cd artifacts
           for dir in */; do
             name="${dir%/}"
+            [ "$name" = "LanCaster-Setup" ] && continue
             tar -czf "${name}.tar.gz" -C "$dir" .
           done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/LanCaster-Setup/LanCaster-Setup.exe
           generate_release_notes: true
