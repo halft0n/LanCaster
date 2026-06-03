@@ -1,0 +1,5 @@
+#!/bin/sh
+# Strip Co-authored-by lines containing "Cursor" from commit messages
+sed -i '/^Co-authored-by:.*[Cc]ursor/d' "$1"
+# Also strip any trailing blank lines left behind
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$1"
