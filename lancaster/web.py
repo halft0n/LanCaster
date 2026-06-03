@@ -12,6 +12,7 @@ from aiohttp import WSMsgType, web
 from lancaster.controller import MediaController
 from lancaster.discovery import DeviceDiscovery
 from lancaster.http_server import HTTPFileServer
+from lancaster.url_proxy import URLProxy
 from lancaster.utils import format_duration, get_local_ip, parse_duration
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +50,9 @@ class WebServer:
         self._discovery = DeviceDiscovery()
         self._http_server = HTTPFileServer(host=self._host, port=self._port + 1)
         self._controller = MediaController(http_server=self._http_server)
+        self._url_proxy = URLProxy(
+            http_server=self._http_server, controller=self._controller,
+        )
         self._selected_device: str | None = None
 
         self._queue: list[QueueItem] = []
@@ -260,14 +264,17 @@ class WebServer:
         try:
             is_url = target.startswith(("http://", "https://"))
             if is_url:
-                await self._controller.play_url(
-                    device, target, title="LanCaster Web",
-                )
+                mode = URLProxy.detect_mode(target)
+                await self._url_proxy.auto_cast(device, target)
+                return web.json_response({
+                    "ok": True, "device": device.name,
+                    "target": target, "mode": mode,
+                })
             else:
                 await self._controller.play_file(device, target)
-            return web.json_response(
-                {"ok": True, "device": device.name, "target": target},
-            )
+                return web.json_response(
+                    {"ok": True, "device": device.name, "target": target},
+                )
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
