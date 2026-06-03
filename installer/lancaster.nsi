@@ -15,11 +15,11 @@ Unicode True
 
 ; --- Version Info ---
 !define PRODUCT_NAME "LanCaster"
-!define PRODUCT_VERSION "0.1.1"
+!define PRODUCT_VERSION "0.1.2"
 !define PRODUCT_PUBLISHER "LanCaster Contributors"
 !define PRODUCT_WEB "https://github.com/halft0n/LanCaster"
 
-VIProductVersion "0.1.1.0"
+VIProductVersion "0.1.2.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 VIAddVersionKey "FileDescription" "LanCaster DLNA Casting Tool"

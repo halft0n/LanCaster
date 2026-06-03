@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lancaster"
-version = "0.1.1"
+version = "0.1.2"
 description = "A full-featured DLNA video casting tool for Windows"
 requires-python = ">=3.10"
 license = "MIT"
