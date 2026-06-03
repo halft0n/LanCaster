@@ -55,8 +55,7 @@ class DeviceDiscovery:
             return (ip, 0)
         if sys.platform == "win32":
             _LOGGER.warning(
-                "Could not detect LAN IP; SSDP may fail on Windows. "
-                "Pass --source-ip explicitly."
+                "Could not detect LAN IP; SSDP may fail on Windows. Pass --source-ip explicitly."
             )
         return None
 
@@ -83,9 +82,7 @@ class DeviceDiscovery:
         await asyncio.sleep(timeout)
         await listener.async_stop()
 
-        stale = [
-            udn for udn in self._devices if udn not in seen_udns
-        ]
+        stale = [udn for udn in self._devices if udn not in seen_udns]
         for udn in stale:
             removed = self._devices.pop(udn)
             _LOGGER.info("Device gone (scan): %s", removed.name)
@@ -96,9 +93,7 @@ class DeviceDiscovery:
 
     async def watch(
         self,
-        callback: (
-            Callable[[DLNADevice, bool], Coroutine] | None
-        ) = None,
+        callback: (Callable[[DLNADevice, bool], Coroutine] | None) = None,
     ) -> SsdpListener:
         """Start continuous device monitoring."""
 
@@ -138,9 +133,7 @@ class DeviceDiscovery:
             await self._listener.async_stop()
             self._listener = None
 
-    async def _register_device(
-        self, ssdp_device: SsdpDevice, dst: str
-    ) -> DLNADevice | None:
+    async def _register_device(self, ssdp_device: SsdpDevice, dst: str) -> DLNADevice | None:
         """Fetch device description and register/update it."""
         location = ssdp_device.location
         if not location:
@@ -169,9 +162,7 @@ class DeviceDiscovery:
                 return None
 
             try:
-                upnp_device = await self._factory.async_create_device(
-                    location
-                )
+                upnp_device = await self._factory.async_create_device(location)
             except Exception:
                 _LOGGER.debug(
                     "Failed to fetch description from %s",
@@ -201,9 +192,7 @@ class DeviceDiscovery:
         try:
             upnp_device = await self._factory.async_create_device(location)
         except Exception:
-            _LOGGER.error(
-                "Failed to connect to %s", location, exc_info=True
-            )
+            _LOGGER.error("Failed to connect to %s", location, exc_info=True)
             return None
 
         parsed = urlparse(location)
@@ -261,16 +250,8 @@ class DeviceDiscovery:
 
     @property
     def renderers(self) -> list[DLNADevice]:
-        return [
-            d
-            for d in self._devices.values()
-            if d.device_type == DeviceType.RENDERER
-        ]
+        return [d for d in self._devices.values() if d.device_type == DeviceType.RENDERER]
 
     @property
     def servers(self) -> list[DLNADevice]:
-        return [
-            d
-            for d in self._devices.values()
-            if d.device_type == DeviceType.SERVER
-        ]
+        return [d for d in self._devices.values() if d.device_type == DeviceType.SERVER]

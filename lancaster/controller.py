@@ -109,9 +109,7 @@ class MediaController:
                 return self._dmr_cache[device.udn]
 
             try:
-                upnp_device = await self._factory.async_create_device(
-                    device.location
-                )
+                upnp_device = await self._factory.async_create_device(device.location)
             except Exception as exc:
                 raise DeviceConnectionError(
                     f"Cannot connect to {device.name} at {device.location}"
@@ -139,17 +137,11 @@ class MediaController:
         )
 
         try:
-            await dmr.async_set_transport_uri(
-                url, media_title, meta_data=meta_data
-            )
-            await dmr.async_wait_for_can_play(
-                max_wait_time=self._wait_for_play
-            )
+            await dmr.async_set_transport_uri(url, media_title, meta_data=meta_data)
+            await dmr.async_wait_for_can_play(max_wait_time=self._wait_for_play)
             await dmr.async_play()
         except Exception as exc:
-            raise PlaybackError(
-                f"Failed to play URL on {device.name}: {exc}"
-            ) from exc
+            raise PlaybackError(f"Failed to play URL on {device.name}: {exc}") from exc
 
         _LOGGER.info("Playing %s on %s", url, device.name)
 
@@ -167,9 +159,7 @@ class MediaController:
             raise PlaybackError(f"File not found: {filepath}")
 
         if not self._http_server:
-            raise PlaybackError(
-                "HTTP server is required for local file casting"
-            )
+            raise PlaybackError("HTTP server is required for local file casting")
 
         file_url = self._http_server.serve_file(filepath)
         mime = guess_mime_type(filepath)
@@ -194,17 +184,11 @@ class MediaController:
 
         dmr = await self._get_dmr(device)
         try:
-            await dmr.async_set_transport_uri(
-                file_url, media_title, meta_data=meta_data
-            )
-            await dmr.async_wait_for_can_play(
-                max_wait_time=self._wait_for_play
-            )
+            await dmr.async_set_transport_uri(file_url, media_title, meta_data=meta_data)
+            await dmr.async_wait_for_can_play(max_wait_time=self._wait_for_play)
             await dmr.async_play()
         except Exception as exc:
-            raise PlaybackError(
-                f"Failed to play file on {device.name}: {exc}"
-            ) from exc
+            raise PlaybackError(f"Failed to play file on {device.name}: {exc}") from exc
 
         _LOGGER.info("Playing %s on %s", filepath.name, device.name)
 
@@ -251,13 +235,9 @@ class MediaController:
         try:
             action = dmr._action("RC", "SetVolume")
             if action:
-                await action.async_call(
-                    InstanceID=0, Channel="Master", DesiredVolume=level
-                )
+                await action.async_call(InstanceID=0, Channel="Master", DesiredVolume=level)
         except Exception as exc:
-            raise PlaybackError(
-                f"Failed to set volume: {exc}"
-            ) from exc
+            raise PlaybackError(f"Failed to set volume: {exc}") from exc
 
     async def get_volume(self, device: DLNADevice) -> int:
         """Get current volume level. Raises on failure."""
@@ -265,14 +245,10 @@ class MediaController:
         try:
             action = dmr._action("RC", "GetVolume")
             if action:
-                result = await action.async_call(
-                    InstanceID=0, Channel="Master"
-                )
+                result = await action.async_call(InstanceID=0, Channel="Master")
                 return int(result.get("CurrentVolume", 0))
         except Exception as exc:
-            raise PlaybackError(
-                f"Failed to get volume: {exc}"
-            ) from exc
+            raise PlaybackError(f"Failed to get volume: {exc}") from exc
         return 0
 
     async def get_position(self, device: DLNADevice) -> PlaybackInfo:
@@ -289,9 +265,7 @@ class MediaController:
             action = dmr._action("AVT", "GetTransportInfo")
             if action:
                 result = await action.async_call(InstanceID=0)
-                raw_state = result.get(
-                    "CurrentTransportState", "STOPPED"
-                )
+                raw_state = result.get("CurrentTransportState", "STOPPED")
                 try:
                     state = TransportState(raw_state)
                 except ValueError:
@@ -303,12 +277,8 @@ class MediaController:
             action = dmr._action("AVT", "GetPositionInfo")
             if action:
                 result = await action.async_call(InstanceID=0)
-                position = self._parse_time(
-                    result.get("RelTime", "0:00:00")
-                )
-                duration = self._parse_time(
-                    result.get("TrackDuration", "0:00:00")
-                )
+                position = self._parse_time(result.get("RelTime", "0:00:00"))
+                duration = self._parse_time(result.get("TrackDuration", "0:00:00"))
                 title = result.get("TrackURI", "")
         except Exception as exc:
             errors.append(str(exc))
@@ -320,9 +290,7 @@ class MediaController:
 
         if len(errors) == 2:
             self.invalidate(device.udn)
-            raise PlaybackError(
-                f"Device unreachable: {'; '.join(errors)}"
-            )
+            raise PlaybackError(f"Device unreachable: {'; '.join(errors)}")
 
         return PlaybackInfo(
             state=state,

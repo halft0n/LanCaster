@@ -26,9 +26,7 @@ def progress_dir():
 
 class TestSavePlaybackPosition:
     def test_saves_position(self, progress_dir):
-        config.save_playback_position(
-            "http://example.com/video.mp4", 120, 3600, "Test Video"
-        )
+        config.save_playback_position("http://example.com/video.mp4", 120, 3600, "Test Video")
         pos = config.get_playback_position("http://example.com/video.mp4")
         assert pos is not None
         assert pos["position"] == 120
@@ -37,33 +35,21 @@ class TestSavePlaybackPosition:
         assert "ts" in pos
 
     def test_skips_if_position_too_small(self, progress_dir):
-        config.save_playback_position(
-            "http://example.com/video.mp4", 3, 3600, "Test"
-        )
+        config.save_playback_position("http://example.com/video.mp4", 3, 3600, "Test")
         assert config.get_playback_position("http://example.com/video.mp4") is None
 
     def test_removes_if_near_end(self, progress_dir):
-        config.save_playback_position(
-            "http://example.com/video.mp4", 100, 3600, "Test"
-        )
-        config.save_playback_position(
-            "http://example.com/video.mp4", 3597, 3600, "Test"
-        )
+        config.save_playback_position("http://example.com/video.mp4", 100, 3600, "Test")
+        config.save_playback_position("http://example.com/video.mp4", 3597, 3600, "Test")
         assert config.get_playback_position("http://example.com/video.mp4") is None
 
     def test_skips_zero_duration(self, progress_dir):
-        config.save_playback_position(
-            "http://example.com/video.mp4", 100, 0, "Test"
-        )
+        config.save_playback_position("http://example.com/video.mp4", 100, 0, "Test")
         assert config.get_playback_position("http://example.com/video.mp4") is None
 
     def test_updates_existing(self, progress_dir):
-        config.save_playback_position(
-            "/path/to/movie.mkv", 60, 7200, "Movie"
-        )
-        config.save_playback_position(
-            "/path/to/movie.mkv", 300, 7200, "Movie"
-        )
+        config.save_playback_position("/path/to/movie.mkv", 60, 7200, "Movie")
+        config.save_playback_position("/path/to/movie.mkv", 300, 7200, "Movie")
         pos = config.get_playback_position("/path/to/movie.mkv")
         assert pos["position"] == 300
 
@@ -73,9 +59,7 @@ class TestGetPlaybackPosition:
         assert config.get_playback_position("unknown") is None
 
     def test_returns_saved_data(self, progress_dir):
-        config.save_playback_position(
-            "test_file.mp4", 500, 2000, "Test"
-        )
+        config.save_playback_position("test_file.mp4", 500, 2000, "Test")
         result = config.get_playback_position("test_file.mp4")
         assert result["position"] == 500
         assert result["duration"] == 2000
@@ -95,9 +79,7 @@ class TestMaxEntries:
     def test_evicts_oldest_when_over_limit(self, progress_dir):
         with mock.patch.object(config, "_MAX_PROGRESS_ENTRIES", 3):
             for i in range(5):
-                config.save_playback_position(
-                    f"video_{i}.mp4", 100, 1000, f"Video {i}"
-                )
+                config.save_playback_position(f"video_{i}.mp4", 100, 1000, f"Video {i}")
 
             data = config._load_progress()
             assert len(data) <= 3

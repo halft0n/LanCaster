@@ -27,9 +27,7 @@ def load_config() -> dict:
 def save_config(cfg: dict) -> None:
     """Save configuration to disk."""
     _ensure_dir()
-    _CONFIG_FILE.write_text(
-        json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def get_default_device() -> str | None:
@@ -59,14 +57,10 @@ def _load_progress() -> dict:
 def _save_progress(data: dict) -> None:
     _ensure_dir()
     if len(data) > _MAX_PROGRESS_ENTRIES:
-        sorted_keys = sorted(
-            data.keys(), key=lambda k: data[k].get("ts", 0)
-        )
+        sorted_keys = sorted(data.keys(), key=lambda k: data[k].get("ts", 0))
         for k in sorted_keys[: len(data) - _MAX_PROGRESS_ENTRIES]:
             del data[k]
-    _PROGRESS_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _PROGRESS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def save_playback_position(

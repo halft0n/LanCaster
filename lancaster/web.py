@@ -218,9 +218,7 @@ class WebServer:
         """Periodically push status to all WebSocket clients."""
         while True:
             try:
-                backoff = self._settings.poll_interval * (
-                    2 ** min(self._poll_error_count, 3)
-                )
+                backoff = self._settings.poll_interval * (2 ** min(self._poll_error_count, 3))
                 await asyncio.sleep(backoff)
                 if not self._ws_clients:
                     continue
@@ -256,8 +254,7 @@ class WebServer:
         pos_s = int(info.position.total_seconds())
         dur_s = int(info.duration.total_seconds())
         naturally_ended = is_stopped and (
-            dur_s > 0 and pos_s >= dur_s - 3
-            or info.state.value == "NO_MEDIA_PRESENT"
+            dur_s > 0 and pos_s >= dur_s - 3 or info.state.value == "NO_MEDIA_PRESENT"
         )
 
         if naturally_ended:
@@ -285,9 +282,8 @@ class WebServer:
                     if device:
                         try:
                             from datetime import timedelta
-                            await self._controller.seek(
-                                device, timedelta(seconds=pos_s + 1)
-                            )
+
+                            await self._controller.seek(device, timedelta(seconds=pos_s + 1))
                         except Exception as exc:
                             _LOGGER.error("Stall recovery failed: %s", exc)
                     self._stall_count = 0
@@ -302,21 +298,15 @@ class WebServer:
         pos_s = int(info.position.total_seconds())
         dur_s = int(info.duration.total_seconds())
         target = self._current_cast_target
-        if (
-            info.state.value == "PLAYING"
-            and dur_s > 0
-            and pos_s > 5
-            and target
-        ):
+        if info.state.value == "PLAYING" and dur_s > 0 and pos_s > 5 and target:
             if not hasattr(self, "_last_progress_save"):
                 self._last_progress_save = 0
             import time
+
             now = time.time()
             if now - self._last_progress_save >= 30:
                 self._last_progress_save = now
-                save_playback_position(
-                    target, pos_s, dur_s, target
-                )
+                save_playback_position(target, pos_s, dur_s, target)
 
     async def _ws_handler(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
@@ -386,9 +376,7 @@ class WebServer:
         target = data.get("target", "")
         device = self._get_selected_renderer()
         if not device:
-            return web.json_response(
-                {"error": "No renderer found"}, status=400
-            )
+            return web.json_response({"error": "No renderer found"}, status=400)
 
         try:
             self._current_cast_target = target
@@ -405,9 +393,7 @@ class WebServer:
                     }
                 )
             else:
-                transcoded = await self._try_transcode_cast(
-                    device, target
-                )
+                transcoded = await self._try_transcode_cast(device, target)
                 return web.json_response(
                     {
                         "ok": True,
@@ -419,15 +405,14 @@ class WebServer:
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
-    async def _try_transcode_cast(
-        self, device, target: str
-    ) -> bool:
+    async def _try_transcode_cast(self, device, target: str) -> bool:
         """Cast local file, auto-transcoding if needed. Returns True if transcoded."""
         from lancaster.transcoder import Transcoder
 
         filepath = Path(target)
         if not filepath.exists():
             from lancaster.exceptions import PlaybackError
+
             raise PlaybackError(f"File not found: {target}")
 
         try:
@@ -443,14 +428,10 @@ class WebServer:
                 transcoder = Transcoder()
                 stream = await transcoder.transcode_stream(filepath)
                 stream_url = self._http_server.serve_stream(stream)
-                await self._controller.play_url(
-                    device, stream_url, title=filepath.stem
-                )
+                await self._controller.play_url(device, stream_url, title=filepath.stem)
                 return True
         except Exception as exc:
-            _LOGGER.debug(
-                "Probe/transcode skipped for %s: %s", filepath, exc
-            )
+            _LOGGER.debug("Probe/transcode skipped for %s: %s", filepath, exc)
 
         await self._controller.play_file(device, target)
         return False
@@ -647,18 +628,14 @@ class WebServer:
         """Cast a queue item using appropriate method (proxy for URLs)."""
         self._current_cast_target = item.target
         if item.is_url:
-            await self._url_proxy.auto_cast(
-                device, item.target, title=item.title
-            )
+            await self._url_proxy.auto_cast(device, item.target, title=item.title)
         else:
             await self._try_transcode_cast(device, item.target)
 
     async def _play_queue_item(self, index: int) -> web.Response:
         device = self._get_selected_renderer()
         if not device:
-            return web.json_response(
-                {"error": "No renderer found"}, status=400
-            )
+            return web.json_response({"error": "No renderer found"}, status=400)
 
         item = self._queue[index]
         try:
@@ -670,9 +647,7 @@ class WebServer:
                     "title": item.title,
                 }
             )
-            return web.json_response(
-                {"ok": True, "index": index, "title": item.title}
-            )
+            return web.json_response({"ok": True, "index": index, "title": item.title})
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=500)
 
@@ -692,12 +667,8 @@ class WebServer:
                         }
                     )
                 except Exception as exc:
-                    _LOGGER.error(
-                        "Failed to play next queue item: %s", exc
-                    )
-                    await self._broadcast_ws(
-                        {"type": "error", "message": str(exc)}
-                    )
+                    _LOGGER.error("Failed to play next queue item: %s", exc)
+                    await self._broadcast_ws({"type": "error", "message": str(exc)})
         else:
             self._queue_playing = False
 
@@ -917,15 +888,11 @@ class WebServer:
         _LOGGER.info("SSDP source IP changed to %s", ip)
         return web.json_response({"ok": True, "ip": ip})
 
-    async def _api_get_resume_position(
-        self, request: web.Request
-    ) -> web.Response:
+    async def _api_get_resume_position(self, request: web.Request) -> web.Response:
         """Check if there's a saved position for a target."""
         target = request.query.get("target", "")
         if not target:
-            return web.json_response(
-                {"error": "Missing 'target'"}, status=400
-            )
+            return web.json_response({"error": "Missing 'target'"}, status=400)
         progress = get_playback_position(target)
         if progress:
             return web.json_response({"ok": True, **progress})
@@ -948,12 +915,8 @@ class WebServer:
 
         device = await self._discovery.add_device_by_location(location)
         if not device:
-            return web.json_response(
-                {"error": f"Cannot connect to {target}"}, status=400
-            )
-        return web.json_response(
-            {"ok": True, "name": device.name, "udn": device.udn}
-        )
+            return web.json_response({"error": f"Cannot connect to {target}"}, status=400)
+        return web.json_response({"ok": True, "name": device.name, "udn": device.udn})
 
     async def _api_file_dialog(self, request: web.Request) -> web.Response:
         """Open a native file picker dialog on the server machine."""
@@ -978,8 +941,7 @@ class WebServer:
         root.attributes("-topmost", True)
 
         video_exts = (
-            "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm"
-            " *.ts *.m4v *.mpg *.mpeg *.3gp *.ogv"
+            "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.ts *.m4v *.mpg *.mpeg *.3gp *.ogv"
         )
         filepath = filedialog.askopenfilename(
             title="选择视频文件",

@@ -19,9 +19,7 @@ _DOWNLOAD_DIR = Path.home() / ".lancaster" / "downloads"
 
 _MAX_DOWNLOAD_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB
 _DOWNLOAD_CHUNK_SIZE = 64 * 1024  # 64 KB
-_CLIENT_TIMEOUT = aiohttp.ClientTimeout(
-    total=600, connect=15, sock_read=60
-)
+_CLIENT_TIMEOUT = aiohttp.ClientTimeout(total=600, connect=15, sock_read=60)
 
 
 class URLProxy:
@@ -110,40 +108,27 @@ class URLProxy:
         """Download URL to disk in streaming chunks with size guard."""
         downloaded = 0
         try:
-            async with aiohttp.ClientSession(
-                timeout=_CLIENT_TIMEOUT
-            ) as session:
+            async with aiohttp.ClientSession(timeout=_CLIENT_TIMEOUT) as session:
                 async with session.get(url) as resp:
                     if resp.status not in (200, 206):
-                        raise ConnectionError(
-                            f"Failed to download {url}: HTTP {resp.status}"
-                        )
+                        raise ConnectionError(f"Failed to download {url}: HTTP {resp.status}")
 
                     content_length = resp.content_length
-                    if (
-                        isinstance(content_length, int)
-                        and content_length > _MAX_DOWNLOAD_SIZE
-                    ):
+                    if isinstance(content_length, int) and content_length > _MAX_DOWNLOAD_SIZE:
                         raise ValueError(
-                            f"File too large ({content_length} bytes, "
-                            f"max {_MAX_DOWNLOAD_SIZE})"
+                            f"File too large ({content_length} bytes, max {_MAX_DOWNLOAD_SIZE})"
                         )
 
                     with open(dest, "wb") as f:
-                        async for chunk in resp.content.iter_chunked(
-                            _DOWNLOAD_CHUNK_SIZE
-                        ):
+                        async for chunk in resp.content.iter_chunked(_DOWNLOAD_CHUNK_SIZE):
                             f.write(chunk)
                             downloaded += len(chunk)
                             if downloaded > _MAX_DOWNLOAD_SIZE:
                                 raise ValueError(
-                                    f"Download exceeded max size "
-                                    f"({_MAX_DOWNLOAD_SIZE} bytes)"
+                                    f"Download exceeded max size ({_MAX_DOWNLOAD_SIZE} bytes)"
                                 )
         except Exception:
             dest.unlink(missing_ok=True)
             raise
 
-        _LOGGER.info(
-            "Downloaded %s -> %s (%d bytes)", url, dest.name, downloaded
-        )
+        _LOGGER.info("Downloaded %s -> %s (%d bytes)", url, dest.name, downloaded)

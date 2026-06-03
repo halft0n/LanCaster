@@ -28,15 +28,9 @@ class HTTPFileServer:
         self._files: dict[str, Path] = {}
         self._streams: dict[str, AsyncIterator[bytes]] = {}
         self._app.router.add_route("GET", "/file/{file_id}", self._handle_file)
-        self._app.router.add_route(
-            "HEAD", "/file/{file_id}", self._handle_file
-        )
-        self._app.router.add_route(
-            "GET", "/stream/{stream_id}", self._handle_stream
-        )
-        self._app.router.add_route(
-            "HEAD", "/stream/{stream_id}", self._handle_stream
-        )
+        self._app.router.add_route("HEAD", "/file/{file_id}", self._handle_file)
+        self._app.router.add_route("GET", "/stream/{stream_id}", self._handle_stream)
+        self._app.router.add_route("HEAD", "/stream/{stream_id}", self._handle_stream)
 
     @property
     def base_url(self) -> str:
@@ -108,16 +102,12 @@ class HTTPFileServer:
                         end = int(parts[1])
             except (ValueError, IndexError):
                 raise web.HTTPRequestRangeNotSatisfiable(
-                    headers={
-                        "Content-Range": f"bytes */{file_size}"
-                    }
+                    headers={"Content-Range": f"bytes */{file_size}"}
                 )
 
             if start < 0 or start >= file_size or end < start:
                 raise web.HTTPRequestRangeNotSatisfiable(
-                    headers={
-                        "Content-Range": f"bytes */{file_size}"
-                    }
+                    headers={"Content-Range": f"bytes */{file_size}"}
                 )
             end = min(end, file_size - 1)
 
@@ -131,15 +121,11 @@ class HTTPFileServer:
             "Connection": "keep-alive",
             "TransferMode.DLNA.ORG": "Streaming",
             "ContentFeatures.DLNA.ORG": (
-                "DLNA.ORG_OP=01;"
-                "DLNA.ORG_FLAGS="
-                "01700000000000000000000000000000"
+                "DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             ),
         }
         if range_header:
-            headers["Content-Range"] = (
-                f"bytes {start}-{end}/{file_size}"
-            )
+            headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
         response = web.StreamResponse(status=status, headers=headers)
         await response.prepare(request)

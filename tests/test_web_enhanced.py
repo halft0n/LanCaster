@@ -40,9 +40,7 @@ def web_server():
         mock_http_inst = MagicMock()
         mock_http_inst.start = AsyncMock()
         mock_http_inst.stop = AsyncMock()
-        mock_http_inst.serve_stream = MagicMock(
-            return_value="http://localhost/stream/x"
-        )
+        mock_http_inst.serve_stream = MagicMock(return_value="http://localhost/stream/x")
         mock_http.return_value = mock_http_inst
 
         mock_disc_inst = MagicMock()
@@ -104,9 +102,7 @@ class TestResumeAPI:
             "lancaster.web.get_playback_position",
             return_value={"position": 120, "duration": 3600, "title": "Test", "ts": 1000},
         ):
-            resp = await client.get(
-                "/api/resume?target=http%3A%2F%2Fexample.com%2Fvideo.mp4"
-            )
+            resp = await client.get("/api/resume?target=http%3A%2F%2Fexample.com%2Fvideo.mp4")
             data = await resp.json()
             assert data["ok"] is True
             assert data["position"] == 120
@@ -124,9 +120,7 @@ class TestAddDeviceAPI:
     @pytest.mark.asyncio
     async def test_add_device_success(self, client, web_server):
         device = _make_device("Manual TV")
-        web_server._discovery.add_device_by_location = AsyncMock(
-            return_value=device
-        )
+        web_server._discovery.add_device_by_location = AsyncMock(return_value=device)
         resp = await client.post(
             "/api/devices/add",
             json={"target": "http://192.168.1.200:49152/desc.xml"},
@@ -137,9 +131,7 @@ class TestAddDeviceAPI:
 
     @pytest.mark.asyncio
     async def test_add_device_failure(self, client, web_server):
-        web_server._discovery.add_device_by_location = AsyncMock(
-            return_value=None
-        )
+        web_server._discovery.add_device_by_location = AsyncMock(return_value=None)
         resp = await client.post(
             "/api/devices/add",
             json={"target": "192.168.1.200"},
@@ -149,9 +141,7 @@ class TestAddDeviceAPI:
     @pytest.mark.asyncio
     async def test_add_device_by_ip(self, client, web_server):
         device = _make_device("IP TV")
-        web_server._discovery.add_device_by_location = AsyncMock(
-            return_value=device
-        )
+        web_server._discovery.add_device_by_location = AsyncMock(return_value=device)
         resp = await client.post(
             "/api/devices/add",
             json={"target": "192.168.1.200"},

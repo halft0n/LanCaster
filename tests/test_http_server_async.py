@@ -30,9 +30,7 @@ class TestServeFile:
         assert url1 == url2
 
     def test_different_files_different_urls(self, http_server):
-        with patch.object(Path, "resolve", side_effect=[
-            Path("/tmp/a.mp4"), Path("/tmp/b.mp4")
-        ]):
+        with patch.object(Path, "resolve", side_effect=[Path("/tmp/a.mp4"), Path("/tmp/b.mp4")]):
             url1 = http_server.serve_file("/tmp/a.mp4")
         with patch.object(Path, "resolve", return_value=Path("/tmp/b.mp4")):
             url2 = http_server.serve_file("/tmp/b.mp4")

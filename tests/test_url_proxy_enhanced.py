@@ -25,9 +25,7 @@ def _make_device(name="Test TV"):
 @pytest.fixture
 def proxy():
     srv = MagicMock()
-    srv.serve_file = MagicMock(
-        return_value="http://192.168.1.50:8201/file/abc"
-    )
+    srv.serve_file = MagicMock(return_value="http://192.168.1.50:8201/file/abc")
     ctrl = MagicMock()
     ctrl.play_url = AsyncMock()
     return URLProxy(http_server=srv, controller=ctrl)
@@ -86,9 +84,7 @@ class TestStreamDownload:
             return_value=mock_session,
         ):
             with pytest.raises(ValueError, match="too large"):
-                await proxy._stream_download(
-                    "http://test.com/huge.mp4", dest
-                )
+                await proxy._stream_download("http://test.com/huge.mp4", dest)
 
     @pytest.mark.asyncio
     async def test_rejects_http_error(self, proxy, tmp_path):
@@ -109,9 +105,7 @@ class TestStreamDownload:
             return_value=mock_session,
         ):
             with pytest.raises(ConnectionError, match="403"):
-                await proxy._stream_download(
-                    "http://test.com/fail.mp4", dest
-                )
+                await proxy._stream_download("http://test.com/fail.mp4", dest)
 
 
 class TestUUIDFilename:
@@ -128,16 +122,10 @@ class TestUUIDFilename:
         with (
             patch.object(proxy, "_stream_download", new=fake_stream_download),
             tempfile.TemporaryDirectory() as tmpdir,
-            patch(
-                "lancaster.url_proxy._DOWNLOAD_DIR", Path(tmpdir)
-            ),
+            patch("lancaster.url_proxy._DOWNLOAD_DIR", Path(tmpdir)),
         ):
-            await proxy.cast_proxied(
-                device, "https://example.com/video.mp4"
-            )
-            await proxy.cast_proxied(
-                device, "https://example.com/video.mp4"
-            )
+            await proxy.cast_proxied(device, "https://example.com/video.mp4")
+            await proxy.cast_proxied(device, "https://example.com/video.mp4")
 
         assert calls[0] != calls[1]
         for name in calls:

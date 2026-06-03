@@ -82,9 +82,7 @@ class TestRetryMechanism:
         device = _make_device()
 
         mock_dmr = MagicMock()
-        mock_dmr.async_set_transport_uri = AsyncMock(
-            side_effect=[OSError("timeout"), None]
-        )
+        mock_dmr.async_set_transport_uri = AsyncMock(side_effect=[OSError("timeout"), None])
         mock_dmr.async_wait_for_can_play = AsyncMock()
         mock_dmr.async_play = AsyncMock()
 
@@ -100,9 +98,7 @@ class TestRetryMechanism:
         device = _make_device()
 
         mock_dmr = MagicMock()
-        mock_dmr.async_set_transport_uri = AsyncMock(
-            side_effect=ConnectionError("always fail")
-        )
+        mock_dmr.async_set_transport_uri = AsyncMock(side_effect=ConnectionError("always fail"))
         mock_dmr.async_wait_for_can_play = AsyncMock()
         mock_dmr.async_play = AsyncMock()
 
@@ -119,9 +115,7 @@ class TestRetryMechanism:
         device = _make_device()
 
         mock_dmr = MagicMock()
-        mock_dmr.async_set_transport_uri = AsyncMock(
-            side_effect=ValueError("bad arg")
-        )
+        mock_dmr.async_set_transport_uri = AsyncMock(side_effect=ValueError("bad arg"))
         mock_dmr.async_wait_for_can_play = AsyncMock()
         mock_dmr.async_play = AsyncMock()
 
@@ -137,9 +131,7 @@ class TestRetryMechanism:
         device = _make_device()
 
         mock_dmr = MagicMock()
-        mock_dmr.async_stop = AsyncMock(
-            side_effect=[OSError("net error"), None]
-        )
+        mock_dmr.async_stop = AsyncMock(side_effect=[OSError("net error"), None])
 
         with patch.object(ctrl, "_get_dmr", new=AsyncMock(return_value=mock_dmr)):
             with patch("asyncio.sleep", new=AsyncMock()):
@@ -154,9 +146,7 @@ class TestRetryMechanism:
         ctrl._dmr_cache[device.udn] = MagicMock()
 
         mock_dmr = MagicMock()
-        mock_dmr.async_pause = AsyncMock(
-            side_effect=[TimeoutError("fail"), None]
-        )
+        mock_dmr.async_pause = AsyncMock(side_effect=[TimeoutError("fail"), None])
 
         with patch.object(ctrl, "_get_dmr", new=AsyncMock(return_value=mock_dmr)):
             with patch("asyncio.sleep", new=AsyncMock()):

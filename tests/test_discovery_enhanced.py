@@ -135,9 +135,7 @@ class TestAddDeviceByLocation:
             "async_create_device",
             new=AsyncMock(return_value=mock_device),
         ):
-            result = await disc.add_device_by_location(
-                "http://192.168.1.200:49152/desc.xml"
-            )
+            result = await disc.add_device_by_location("http://192.168.1.200:49152/desc.xml")
 
         assert result is not None
         assert result.name == "Manual TV"
@@ -152,9 +150,7 @@ class TestAddDeviceByLocation:
             "async_create_device",
             new=AsyncMock(side_effect=Exception("connect fail")),
         ):
-            result = await disc.add_device_by_location(
-                "http://192.168.1.200:49152/desc.xml"
-            )
+            result = await disc.add_device_by_location("http://192.168.1.200:49152/desc.xml")
 
         assert result is None
 
@@ -164,9 +160,7 @@ class TestAddDeviceByLocation:
 
         mock_device = _make_upnp_device("NAS", "uuid:nas")
         mock_service = MagicMock()
-        mock_service.service_type = (
-            "urn:schemas-upnp-org:service:ContentDirectory:1"
-        )
+        mock_service.service_type = "urn:schemas-upnp-org:service:ContentDirectory:1"
         mock_device.services = {"ContentDirectory": mock_service}
 
         with patch.object(
@@ -174,9 +168,7 @@ class TestAddDeviceByLocation:
             "async_create_device",
             new=AsyncMock(return_value=mock_device),
         ):
-            result = await disc.add_device_by_location(
-                "http://192.168.1.201:49152/desc.xml"
-            )
+            result = await disc.add_device_by_location("http://192.168.1.201:49152/desc.xml")
 
         assert result.device_type == DeviceType.SERVER
 
