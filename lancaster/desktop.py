@@ -241,7 +241,8 @@ class _DesktopBridge:
             return {"ok": False, "error": "Window not available"}
 
         file_types = (
-            "视频文件 (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v;*.mpg;*.mpeg;*.3gp;*.ogv)",
+            "视频文件 (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;"
+            "*.webm;*.ts;*.m4v;*.mpg;*.mpeg;*.3gp;*.ogv)",
             "音频文件 (*.mp3;*.flac;*.wav;*.aac;*.ogg;*.wma;*.m4a)",
             "所有文件 (*.*)",
         )

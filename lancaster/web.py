@@ -797,10 +797,14 @@ class WebServer:
         root.withdraw()
         root.attributes("-topmost", True)
 
+        video_exts = (
+            "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm"
+            " *.ts *.m4v *.mpg *.mpeg *.3gp *.ogv"
+        )
         filepath = filedialog.askopenfilename(
             title="选择视频文件",
             filetypes=[
-                ("视频文件", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.ts *.m4v *.mpg *.mpeg *.3gp *.ogv"),
+                ("视频文件", video_exts),
                 ("音频文件", "*.mp3 *.flac *.wav *.aac *.ogg *.wma *.m4a"),
                 ("所有文件", "*.*"),
             ],
